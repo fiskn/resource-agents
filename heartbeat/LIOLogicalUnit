@@ -29,15 +29,10 @@
 . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
 
 # Defaults
-# Set a default implementation based on software installed
-if have_binary ietadm; then
-    OCF_RESKEY_implementation_default="iet"
-elif have_binary tgtadm; then
-    OCF_RESKEY_implementation_default="tgt"
-elif have_binary lio_node; then
-    OCF_RESKEY_implementation_default="lio"
-fi
-: ${OCF_RESKEY_implementation=${OCF_RESKEY_implementation_default}}
+# Set the iSCSI fabric as default 
+OCF_RESKEY_fabric_default="iscsi"
+: ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
+
 
 # Use a default SCSI ID and SCSI SN that is unique across the cluster,
 # and persistent in the event of resource migration.
@@ -56,49 +51,38 @@ OCF_RESKEY_scsi_sn_default=${sn:0:8}
 OCF_RESKEY_lio_iblock_default=0
 OCF_RESKEY_lio_iblock=${OCF_RESKEY_lio_iblock:-$OCF_RESKEY_lio_iblock_default}
 
-## tgt specifics
-# tgt has "backing store type" and "backing store open flags",
-# as well as device-type.
-#
-# suggestions how to make this generic accross all supported implementations?
-# how should they be named, how should they be mapped to implementation specifics?
-#
-# OCF_RESKEY_tgt_bstype
-# OCF_RESKEY_tgt_bsoflags
-# OCF_RESKEY_tgt_device_type
-
 #######################################################################
 
 meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOLogicalUnit" version="0.9">
-<version>0.9</version>
+<resource-agent name="LIOLogicalUnit" version="0.1">
+<version>0.1</version>
 
 <longdesc lang="en">
-Manages iSCSI Logical Unit. An iSCSI Logical unit is a subdivision of 
-an SCSI Target, exported via a daemon that speaks the iSCSI protocol.
+Manages a Logical Unit for a LIO target. An Logical unit is a subdivision of 
+a Target, exported via a daemon that speaks a specific protocol.
 </longdesc>
-<shortdesc lang="en">Manages iSCSI Logical Units (LUs)</shortdesc>
+<shortdesc lang="en">Manages Logical Units (LUs) for LIO targets</shortdesc>
 
 <parameters>
-<parameter name="implementation" required="0" unique="0">
+<parameter name="fabric" required="0" unique="0">
 <longdesc lang="en">
-The iSCSI target daemon implementation. Must be one of "iet", "tgt",
-or "lio".  If unspecified, an implementation is selected based on the
-availability of management utilities, with "iet" being tried first,
-then "tgt", then "lio".
+The LIO target supports several fabric types. Must be one of "iscsi" or
+"qla2xxx". If unspecified, "iscsi" is used.
 </longdesc>
-<shortdesc lang="en">iSCSI target daemon implementation</shortdesc>
+<shortdesc lang="en">The type of fabric</shortdesc>
 <content type="string" default="${OCF_RESKEY_implementation_default}"/>
 </parameter>
 
-<parameter name="target_iqn" required="1" unique="0">
+<parameter name="target_identifier" required="1" unique="0">
 <longdesc lang="en">
-The iSCSI Qualified Name (IQN) that this Logical Unit belongs to.
+The target this Logical Unit belongs to. For an iSCSI target this has to
+target iSCSI Qualified Name (IQN). Fibre Channel (qla2xxx) targets use
+a World Wide Name (WWN) for identification.
 </longdesc>
-<shortdesc lang="en">iSCSI target IQN</shortdesc>
+<shortdesc lang="en">Target identifier</shortdesc>
 <content type="string" />
 </parameter>
 
@@ -153,42 +137,14 @@ The SCSI product ID to be configured for this Logical Unit.
 <content type="string" />
 </parameter>
 
-<parameter name="tgt_bstype" required="0" unique="0">
-<longdesc lang="en">
-TGT specific backing store type. If you want to use aio,
-make sure your tgtadm is built against libaio.
-See tgtadm(8).
-</longdesc>
-<shortdesc lang="en">TGT backing store type</shortdesc>
-<content type="string" />
-</parameter>
-
-<parameter name="tgt_bsoflags" required="0" unique="0">
-<longdesc lang="en">
-TGT specific backing store open flags (direct|sync).
-See tgtadm(8).
-</longdesc>
-<shortdesc lang="en">TGT backing store open flags</shortdesc>
-<content type="string" />
-</parameter>
-
-<parameter name="tgt_device_type" required="0" unique="0">
-<longdesc lang="en">
-TGT specific device type.
-See tgtadm(8).
-</longdesc>
-<shortdesc lang="en">TGT device type</shortdesc>
-<content type="string" />
-</parameter>
-
 <parameter name="additional_parameters" required="0" unique="0">
 <longdesc lang="en">
 Additional LU parameters. A space-separated list of "name=value" pairs
-which will be passed through to the iSCSI daemon's management
+which will be passed through to the targets management
 interface. The supported parameters are implementation
 dependent. Neither the name nor the value may contain whitespace.
 </longdesc>
-<shortdesc lang="en">List of iSCSI LU parameters</shortdesc>
+<shortdesc lang="en">List of LU parameters</shortdesc>
 <content type="string" />
 </parameter>
 
@@ -199,10 +155,8 @@ connect to this lun. Initiators may be listed in any syntax
 the target implementation allows. If this parameter is empty or
 not set, access to this lun will not be allowed from any initiator,
 if target is not in demo mode.
-
-This parameter is only necessary when using LIO.
 </longdesc>
-<shortdesc lang="en">List of iSCSI initiators allowed to connect
+<shortdesc lang="en">List of initiators allowed to connect
 to this lun.</shortdesc>
 <content type="string" default=""/>
 </parameter>
@@ -239,7 +193,7 @@ END
 
 LIOLogicalUnit_usage() {
 	cat <<END
-usage: $0 {start|stop|status|monitor|validate-all|meta-data}
+usage: $0 {start|stop|status|monitor|reload|validate-all|meta-data}
 
 Expects to have a fully populated OCF RA-compliant environment set.
 END
