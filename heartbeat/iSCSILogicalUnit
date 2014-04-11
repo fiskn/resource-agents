@@ -230,7 +230,6 @@ in /sys/kernel/config/target/core/.
 <actions>
 <action name="start"        timeout="10" />
 <action name="stop"         timeout="10" />
-<action name="reload"       timeout="10" />
 <action name="status"       timeout="10" interval="10" depth="0" />
 <action name="monitor"      timeout="10" interval="10" depth="0" />
 <action name="meta-data"    timeout="5" />
