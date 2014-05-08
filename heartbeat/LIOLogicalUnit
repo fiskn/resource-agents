@@ -210,13 +210,20 @@ LIOLogicalUnit_start() {
 }
 
 LIOLogicalUnit_reload() {
+    local acl_path
 
     case $OCF_RESKEY_fabric in
 	iscsi)
            if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+               acl_path="/sys/kernel/config/target/iscsi/${OCF_RESKEY_target_id}/tpgt_1/acls"
+               ocf_log err "Updating allowed iSCSI initiators"
                for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                   if [ -L "${acl_path}/${initiator}/lun_${OCF_RESKEY_lun}/lio_lun" ]; then
+                       :
+                   else
                        ocf_run lio_node --addlunacl=${OCF_RESKEY_target_id} 1 \
                        ${initiator} ${OCF_RESKEY_lun} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                   fi
                done
            fi
 	    ;;
