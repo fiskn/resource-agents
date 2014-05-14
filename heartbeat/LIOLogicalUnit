@@ -399,7 +399,7 @@ case $__OCF_ACTION in
 start)		LIOLogicalUnit_start;;
 stop)		LIOLogicalUnit_stop;;
 monitor|status)	LIOLogicalUnit_monitor;;
-reload)		ocf_log err "Reloading..."
+reload)		ocf_log info "Reloading..."
 		LIOLogicalUnit_reload
 		;;
 validate-all)	;;
