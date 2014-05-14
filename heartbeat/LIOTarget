@@ -31,8 +31,8 @@ OCF_RESKEY_fabric_default="iscsi"
 : ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
 
 # Listen on 0.0.0.0:3260 by default
-OCF_RESKEY_portals_default="0.0.0.0:3260"
-: ${OCF_RESKEY_portals=${OCF_RESKEY_portals_default}}
+OCF_RESKEY_iscsi_portals_default="0.0.0.0:3260"
+: ${OCF_RESKEY_portals=${OCF_RESKEY_iscsi_portals_default}}
 
 # Lockfile, used for selecting a target ID
 LOCKFILE=${HA_RSCTMP}/LIOTarget-${OCF_RESKEY_fabric}.lock
@@ -42,53 +42,51 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOTarget" version="0.9">
-<version>0.9</version>
+<resource-agent name="LIOTarget" version="0.1">
+<version>0.1</version>
 
 <longdesc lang="en">
-Manages iSCSI targets. An iSCSI target is a collection of SCSI Logical
-Units (LUs) exported via a daemon that speaks the iSCSI protocol.
+Manages LIO targets. A target is a daemon that speaks
+ a specific protocol and exports a collection of Logical Units (LUs) .
 </longdesc>
-<shortdesc lang="en">iSCSI target export agent</shortdesc>
+<shortdesc lang="en">LIO target export agent</shortdesc>
 
 <parameters>
-<parameter name="implementation" required="0" unique="0">
+<parameter name="fabric" required="0" unique="0">
 <longdesc lang="en">
-The iSCSI target daemon implementation. Must be one of "iet", "tgt",
-or "lio".  If unspecified, an implementation is selected based on the
-availability of management utilities, with "iet" being tried first,
-then "tgt", then "lio".
+The LIO target supports several fabric types. Must be one of "iscsi" or
+"qla2xxx". If unspecified, "iscsi" is used.
 </longdesc>
-<shortdesc lang="en">Specifies the iSCSI target implementation
-("iet", "tgt" or "lio").</shortdesc>
-<content type="string" default="${OCF_RESKEY_implementation_default}"/>
+<shortdesc lang="en">Specifies the type of fabric</shortdesc>
+<content type="string" default="${OCF_RESKEY_fabric_default}"/>
 </parameter>
 
-<parameter name="iqn" required="1" unique="1">
+<parameter name="id" required="1" unique="1">
 <longdesc lang="en">
-The target iSCSI Qualified Name (IQN). Should follow the conventional
+ISCSI targets use an iSCSI Qualified Name (IQN). Should follow the conventional
 "iqn.yyyy-mm.&lt;reversed domain name&gt;[:identifier]" syntax.
+FC targets use a World Wide Port Name (WWPN). Each World Wide Name (WWN)
+ is an 8 byte number derived from an IEEE OUI and vendor-supplied information.
 </longdesc>
-<shortdesc lang="en">iSCSI target IQN</shortdesc>
+<shortdesc lang="en">Target id (IQN or WWPN)</shortdesc>
 <content type="string" />
 </parameter>
 
-<parameter name="tid" required="0" unique="1">
-<longdesc lang="en">
-The iSCSI target ID. Required for tgt.
-</longdesc>
-<shortdesc lang="en">iSCSI target ID</shortdesc>
-<content type="integer" />
-</parameter>
-
-<parameter name="portals" required="0" unique="0">
+<parameter name="iscsi_portals" required="0" unique="0">
 <longdesc lang="en">
 iSCSI network portal addresses. Not supported by all
 implementations. If unset, the default is to create one portal that
-listens on ${OCF_RESKEY_portal_default}.
+listens on ${OCF_RESKEY_iscsi_portals_default}.
 </longdesc>
 <shortdesc lang="en">iSCSI portal addresses</shortdesc>
-<content type="string" default="${OCF_RESKEY_portals_default}"/>
+<content type="string" default="${OCF_RESKEY_iscsi_portals_default}"/>
+</parameter>
+
+<parameter name="fc_ports" required="0" unique="0">
+<longdesc lang="en">FC WWPN addresses to use by the target
+</longdesc>
+<shortdesc lang="en">FC WWPNs</shortdesc>
+<content type="string"/>
 </parameter>
 
 <parameter name="allowed_initiators" required="0" unique="0">
@@ -96,9 +94,9 @@ listens on ${OCF_RESKEY_portal_default}.
 Allowed initiators. A space-separated list of initiators allowed to
 connect to this target. Initiators may be listed in any syntax
 the target implementation allows. If this parameter is empty or
-not set, access to this target will be allowed from any initiator.
+not set, access to this target will not be allowed from any initiator.
 </longdesc>
-<shortdesc lang="en">List of iSCSI initiators allowed to connect
+<shortdesc lang="en">List of initiators allowed to connect
 to this target</shortdesc>
 <content type="string" default=""/>
 </parameter>
@@ -125,11 +123,11 @@ A password used for incoming initiator authentication.
 <parameter name="additional_parameters" required="0" unique="0">
 <longdesc lang="en">
 Additional target parameters. A space-separated list of "name=value"
-pairs which will be passed through to the iSCSI daemon's management
+pairs which will be passed through to the LIO targets management
 interface. The supported parameters are implementation
 dependent. Neither the name nor the value may contain whitespace.
 </longdesc>
-<shortdesc lang="en">List of iSCSI target parameters</shortdesc>
+<shortdesc lang="en">List of LIO target parameters</shortdesc>
 <content type="string" />
 </parameter>
 
