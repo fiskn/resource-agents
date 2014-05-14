@@ -297,8 +297,10 @@ LIOLogicalUnit_monitor() {
             # Catch the case where either only the lun _or_ the backend
             # device is available (XOR). We already know not both are valid.
             [ -e ${cfgfs_path_lun} ] && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ] && \
+            ocf_log error "Lun ${OCF_RESKEY_lun} configured but backend device iblock_${OCF_RESKEY_lio_iblock} not connected." && \
             return $OCF_ERR_GENERIC
             [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ] && \
+            ocf_log error "Backend device iblock_${OCF_RESKEY_lun} configured but lun ${OCF_RESKEY_lun} not connected." && \
             return $OCF_ERR_GENERIC
 	    ;;
     esac
