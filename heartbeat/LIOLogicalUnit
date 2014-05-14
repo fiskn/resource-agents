@@ -250,13 +250,9 @@ LIOLogicalUnit_start() {
 	    fi
 	    ocf_run lio_node --addlun=${OCF_RESKEY_target_id} 1 ${OCF_RESKEY_lun} \
 		${OCF_RESOURCE_INSTANCE} iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
-
-           if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-               for initiator in ${OCF_RESKEY_allowed_initiators}; do
-                       ocf_run lio_node --addlunacl=${OCF_RESKEY_target_id} 1 \
-                       ${initiator} ${OCF_RESKEY_lun} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-               done
-           fi
+            if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+                LIOLogicalUnit_acls || exit $OCF_ERR_GENERIC
+            fi
 	    ;;
     esac
 
@@ -264,22 +260,9 @@ LIOLogicalUnit_start() {
 }
 
 LIOLogicalUnit_reload() {
-    local acl_path
-
     case $OCF_RESKEY_fabric in
 	iscsi)
-           if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-               acl_path="/sys/kernel/config/target/iscsi/${OCF_RESKEY_target_id}/tpgt_1/acls"
-               ocf_log err "Updating allowed iSCSI initiators"
-               for initiator in ${OCF_RESKEY_allowed_initiators}; do
-                   if [ -L "${acl_path}/${initiator}/lun_${OCF_RESKEY_lun}/lio_lun" ]; then
-                       :
-                   else
-                       ocf_run lio_node --addlunacl=${OCF_RESKEY_target_id} 1 \
-                       ${initiator} ${OCF_RESKEY_lun} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-                   fi
-               done
-           fi
+            LIOLogicalUnit_acls
 	    ;;
     esac
 
@@ -291,12 +274,7 @@ LIOLogicalUnit_stop() {
     if [ $? =  $OCF_SUCCESS ]; then
 	case $OCF_RESKEY_fabric in
 	    iscsi)
-               if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-                       for initiator in ${OCF_RESKEY_allowed_initiators}; do
-                               ocf_run lio_node --dellunacl=${OCF_RESKEY_target_id} 1 \
-                               ${initiator} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-                       done
-               fi
+                LIOLogicalUnit_acls
 		ocf_run lio_node --dellun=${OCF_RESKEY_target_id} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
 		ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
 	esac
