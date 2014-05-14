@@ -26,22 +26,16 @@
 . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
 
 # Defaults
-# Set a default implementation based on software installed
-if have_binary ietadm; then
-    OCF_RESKEY_implementation_default="iet"
-elif have_binary tgtadm; then
-    OCF_RESKEY_implementation_default="tgt"
-elif have_binary lio_node; then
-    OCF_RESKEY_implementation_default="lio"
-fi
-: ${OCF_RESKEY_implementation=${OCF_RESKEY_implementation_default}}
+# Set the iSCSI fabric as default 
+OCF_RESKEY_fabric_default="iscsi"
+: ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
 
 # Listen on 0.0.0.0:3260 by default
 OCF_RESKEY_portals_default="0.0.0.0:3260"
 : ${OCF_RESKEY_portals=${OCF_RESKEY_portals_default}}
 
 # Lockfile, used for selecting a target ID
-LOCKFILE=${HA_RSCTMP}/LIOTarget-${OCF_RESKEY_implementation}.lock
+LOCKFILE=${HA_RSCTMP}/LIOTarget-${OCF_RESKEY_fabric}.lock
 #######################################################################
 
 meta_data() {
@@ -175,87 +169,8 @@ LIOTarget_start() {
     local initiator
     local portal
 
-    case $OCF_RESKEY_implementation in
-	iet)
-	    local lasttid
-	    local tid
-	    if [ "${OCF_RESKEY_tid}" ]; then
-		tid="${OCF_RESKEY_tid}"
-	    else
-    	        # Figure out the last used target ID, add 1 to get the new
-	        # target ID.
-		ocf_take_lock $LOCKFILE
-		ocf_release_lock_on_exit $LOCKFILE
-		lasttid=`sed -ne "s/tid:\([[:digit:]]\+\) name:.*/\1/p" < /proc/net/iet/volume | sort -n | tail -n1`
-		[ -z "${lasttid}" ] && lasttid=0
-		tid=$((++lasttid))
-	    fi
-	    # Create the target.
-	    ocf_run ietadm --op new \
-		--tid=${tid} \
-		--params Name=${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
-	    # Set additional parameters.
-	    for param in ${OCF_RESKEY_additional_parameters}; do
-		name=${param%=*}
-		value=${param#*=}
-		ocf_run ietadm --op update \
-		    --tid=${tid} \
-		    --params ${name}=${value} || exit $OCF_ERR_GENERIC
-	    done
-	    # Legacy versions of IET allow targets by default, current
-	    # versions deny. To be safe we manage both the .allow and
-	    # .deny files.
-	    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-		echo "${OCF_RESKEY_iqn} ALL" >> /etc/initiators.deny
-		echo "${OCF_RESKEY_iqn} ${OCF_RESKEY_allowed_initiators// /,}" >> /etc/initiators.allow
-	    else
-		echo "${OCF_RESKEY_iqn} ALL" >> /etc/initiators.allow
-	    fi
-	    # In iet, adding a new user and assigning it to a target
-	    # is one operation.
-	    if [ -n "${OCF_RESKEY_incoming_username}" ]; then
-		ocf_run ietadm --op new --user \
-		    --tid=${tid} \
-		    --params=IncomingUser=${OCF_RESKEY_incoming_username},Password=${OCF_RESKEY_incoming_password} \
-		    || exit $OCF_ERR_GENERIC
-	    fi
-	    ;;
-	tgt)
-	    local tid
-	    tid="${OCF_RESKEY_tid}"
-	    # Create the target.
-	    ocf_run tgtadm --lld iscsi --op new --mode target \
-		--tid=${tid} \
-		--targetname ${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
-	    # Set parameters.
-	    for param in ${OCF_RESKEY_additional_parameters}; do
-		name=${param%=*}
-		value=${param#*=}
-		ocf_run tgtadm --lld iscsi --op update --mode target \
-		    --tid=${tid} \
-		    --name=${name} --value=${value} || exit $OCF_ERR_GENERIC
-	    done
-	    # For tgt, we always have to add access per initiator;
-	    # access to targets is denied by default. If
-	    # "allowed_initiators" is unset, we must use the special
-	    # keyword ALL.
-	    for initiator in ${OCF_RESKEY_allowed_initiators=ALL}; do
-		ocf_run tgtadm --lld iscsi --op bind --mode target \
-		    --tid=${tid} \
-		    --initiator-address=${initiator} || exit $OCF_ERR_GENERIC
-	    done
-	    # In tgt, we must first create a user account, then assign
-	    # it to a target using the "bind" operation.
-	    if [ -n "${OCF_RESKEY_incoming_username}" ]; then
-		ocf_run tgtadm --lld iscsi --mode account --op new \
-		    --user=${OCF_RESKEY_incoming_username} \
-		    --password=${OCF_RESKEY_incoming_password} || exit $OCF_ERR_GENERIC
-		ocf_run tgtadm --lld iscsi --mode account --op bind \
-		    --tid=${tid} \
-		    --user=${OCF_RESKEY_incoming_username} || exit $OCF_ERR_GENERIC
-	    fi
-	    ;;
-	lio)
+    case $OCF_RESKEY_fabric in
+	iscsi)
 	    # lio distinguishes between targets and target portal
 	    # groups (TPGs). We will always create one TPG, with the
 	    # number 1. In lio, creating a network portal
@@ -311,107 +226,8 @@ LIOTarget_stop() {
     LIOTarget_monitor
     if [ $? =  $OCF_SUCCESS ]; then
 	local tid
-	case $OCF_RESKEY_implementation in
-	    iet)
-		# Figure out the target ID
-		tid=`sed -ne "s/tid:\([[:digit:]]\+\) name:${OCF_RESKEY_iqn}/\1/p" < /proc/net/iet/volume`
-		if [ -z "${tid}" ]; then
-		    ocf_log err "Failed to retrieve target ID for IQN ${OCF_RESKEY_iqn}"
-		    exit $OCF_ERR_GENERIC
-		fi
-		# Close existing connections. There is no other way to
-		# do this in IET than to parse the contents of
-		# /proc/net/iet/session.
-		set -- $(sed -ne '/^tid:'${tid}' /,/^tid/ {
-                          /^[[:space:]]*sid:\([0-9]\+\)/ {
-                             s/^[[:space:]]*sid:\([0-9]*\).*/--sid=\1/; h;
-                          };
-                          /^[[:space:]]*cid:\([0-9]\+\)/ { 
-                              s/^[[:space:]]*cid:\([0-9]*\).*/--cid=\1/; G; p; 
-                          }; 
-                      }' < /proc/net/iet/session)
-		while [[ -n $2 ]]; do
-                    # $2 $1 looks like "--sid=X --cid=Y"
-		    ocf_run ietadm --op delete \
-			     --tid=${tid} $2 $1
-		    shift 2
-		done
-   	        # In iet, unassigning a user from a target and
-		# deleting the user account is one operation.
-		if [ -n "${OCF_RESKEY_incoming_username}" ]; then
-		    ocf_run ietadm --op delete --user \
-			--tid=${tid} \
-			--params=IncomingUser=${OCF_RESKEY_incoming_username} \
-			|| exit $OCF_ERR_GENERIC
-		fi
-		# Loop on delete. Keep trying until we time out, if
-		# necessary.
-		while true; do
-		    if ietadm --op delete --tid=${tid}; then
-			ocf_log debug "Removed target ${OCF_RESKEY_iqn}."
-			break
-		    else
-			ocf_log warn "Failed to remove target ${OCF_RESKEY_iqn}, retrying."
-			sleep 1
-		    fi
-		done
-		# Avoid stale /etc/initiators.{allow,deny} entries
-		# for this target
-		if [ -e /etc/initiators.deny ]; then
-		    ocf_run sed -e "/^${OCF_RESKEY_iqn}[[:space:]]/d" \
-			-i /etc/initiators.deny
-		fi
-		if [ -e /etc/initiators.allow ]; then
-		    ocf_run sed -e "/^${OCF_RESKEY_iqn}[[:space:]]/d" \
-			-i /etc/initiators.allow
-		fi
-		;;
-	    tgt)
-		tid="${OCF_RESKEY_tid}"
-		# Close existing connections. There is no other way to
-		# do this in tgt than to parse the output of "tgtadm --op
-		# show".
-		set -- $(tgtadm --lld iscsi --op show --mode target \
-		    | sed -ne '/^Target '${tid}':/,/^Target/ {
-                          /^[[:space:]]*I_T nexus: \([0-9]\+\)/ {
-                             s/^.*: \([0-9]*\).*/--sid=\1/; h;
-                          };
-                          /^[[:space:]]*Connection: \([0-9]\+\)/ { 
-                              s/^.*: \([0-9]*\).*/--cid=\1/; G; p; 
-                          }; 
-                          /^[[:space:]]*LUN information:/ q; 
-                      }')
-		while [[ -n $2 ]]; do
-                    # $2 $1 looks like "--sid=X --cid=Y"
-		    ocf_run tgtadm --lld iscsi --op delete --mode connection \
-			--tid=${tid} $2 $1
-		    shift 2
-		done
-	        # In tgt, we must first unbind the user account from
-		# the target, then remove the account itself.
-		if [ -n "${OCF_RESKEY_incoming_username}" ]; then
-		    ocf_run tgtadm --lld iscsi --mode account --op unbind \
-			--tid=${tid} \
-			--user=${OCF_RESKEY_incoming_username} || exit $OCF_ERR_GENERIC
-		    ocf_run tgtadm --lld iscsi --mode account --op delete \
-			--user=${OCF_RESKEY_incoming_username} || exit $OCF_ERR_GENERIC
-		fi
-		# Loop on delete. Keep trying until we time out, if
-		# necessary.
-		while true; do
-		    if tgtadm --lld iscsi --op delete --mode target --tid=${tid}; then
-			ocf_log debug "Removed target ${OCF_RESKEY_iqn}."
-			break
-		    else
-			ocf_log warn "Failed to remove target ${OCF_RESKEY_iqn}, retrying."
-			sleep 1
-		    fi
-		done
-		# In tgt, we don't have to worry about our ACL
-		# entries. They are automatically removed upon target
-		# deletion.
-		;;
-	    lio)
+	case $OCF_RESKEY_fabric in
+	    iscsi)
 		# In lio, removing a target automatically removes all
 		# associated TPGs, network portals, and LUNs.
 		ocf_run lio_node --deliqn ${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
@@ -423,15 +239,8 @@ LIOTarget_stop() {
 }
 
 LIOTarget_monitor() {
-    case $OCF_RESKEY_implementation in
-	iet)
-	    grep -Eq "tid:[0-9]+ name:${OCF_RESKEY_iqn}" /proc/net/iet/volume && return $OCF_SUCCESS
-	    ;;
-	tgt)
-	    tgtadm --lld iscsi --op show --mode target \
-		| grep -Eq "Target [0-9]+: ${OCF_RESKEY_iqn}" && return $OCF_SUCCESS
-	    ;;
-	lio)
+    case $OCF_RESKEY_fabric in
+	iscsi)
 	    # if we have no configfs entry for the target, it's
 	    # definitely stopped
 	    [ -d /sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn} ] || return $OCF_NOT_RUNNING
@@ -448,11 +257,8 @@ LIOTarget_monitor() {
 LIOTarget_validate() {
     # Do we have all required variables?
     local required_vars
-    case $OCF_RESKEY_implementation in
-	iet)
-	    required_vars="iqn"
-	    ;;
-	tgt)
+    case $OCF_RESKEY_fabric in
+	iscsi)
 	    required_vars="iqn tid"
 	    ;;
     esac
@@ -465,19 +271,11 @@ LIOTarget_validate() {
     done
 
     # Is the configured implementation supported?
-    case "$OCF_RESKEY_implementation" in
-	"iet"|"tgt"|"lio")
-	    ;;
-	"")
-	    # The user didn't specify an implementation, and we were
-	    # unable to determine one from installed binaries (in
-	    # other words: no binaries for any supported
-	    # implementation could be found)
-	    ocf_log error "Undefined iSCSI target implementation"
-	    exit $OCF_ERR_INSTALLED
+    case "$OCF_RESKEY_fabric" in
+	"iscsi"|"qla2xxx")
 	    ;;
 	*)
-	    ocf_log error "Unsupported iSCSI target implementation \"$OCF_RESKEY_implementation\"!"
+	    ocf_log error "Unsupported LIO fabric type \"$OCF_RESKEY_implementation\"!"
 	    exit $OCF_ERR_CONFIGURED
 	    ;;
     esac
@@ -487,13 +285,8 @@ LIOTarget_validate() {
     local unsupported_params
     local var
     local envar
-    case $OCF_RESKEY_implementation in
-	iet|tgt)
-	    # IET and tgt do not support binding a target portal to a
-	    # specific IP address.
-	    unsupported_params="portals"
-	    ;;
-	lio)
+    case $OCF_RESKEY_fabric in
+	iscsi)
 	    # TODO: Remove incoming_username and incoming_password
 	    # from this check when LIO 3.0 gets CHAP authentication
 	    unsupported_params="tid incoming_username incoming_password"
@@ -507,7 +300,7 @@ LIOTarget_validate() {
                     case "$__OCF_ACTION" in
                         start|validate-all)
                           ocf_log warn "Configuration parameter \"${var}\"" \
-                            "is not supported by the iSCSI implementation" \
+                            "is not supported by by the \"${OCF_RESKEY_fabric}\" fabric" \
                             "and will be ignored." ;;
                     esac
             fi
@@ -516,32 +309,16 @@ LIOTarget_validate() {
 
     if ! ocf_is_probe; then
         # Do we have all required binaries?
-	case $OCF_RESKEY_implementation in
-	    iet)
-		check_binary ietadm
-		;;
-	    tgt)
-		check_binary tgtadm
-		;;
-	    lio)
+	case $OCF_RESKEY_fabric in
+	    iscsi|qla2xxx)
 		check_binary tcm_node
 		check_binary lio_node
 		;;
 	esac
 
         # Is the required kernel functionality available?
-	case $OCF_RESKEY_implementation in
-	    iet)
-		[ -d /proc/net/iet ]
-		if [ $? -ne 0 ]; then
-		    ocf_log err "/proc/net/iet does not exist or is not a directory -- check if required modules are loaded."
-		    exit $OCF_ERR_INSTALLED
-		fi
-		;;
-	    tgt)
-	        # tgt is userland only
-		;;
-	    lio)
+	case $OCF_RESKEY_fabric in
+	    iscsi)
 	        # lio needs configfs to be mounted
 		if ! grep -Eq "^.*/sys/kernel/config[[:space:]]+configfs" /proc/mounts; then
 		    ocf_log err "configfs not mounted at /sys/kernel/config -- check if required modules are loaded."
@@ -578,7 +355,7 @@ case $__OCF_ACTION in
 start)		LIOTarget_start;;
 stop)		LIOTarget_stop;;
 monitor|status)	LIOTarget_monitor;;
-reload)		ocf_log err "Reloading..."
+reload)		ocf_log info "Reloading..."
 	        LIOTarget_start
 		;;
 validate-all)	;;
