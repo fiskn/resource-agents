@@ -231,6 +231,8 @@ LIOLogicalUnit_acls() {
 LIOLogicalUnit_start() {
     LIOLogicalUnit_monitor
     if [ $? =  $OCF_SUCCESS ]; then
+        # The lun seems to be availaddble, also verify/fix its acls
+        LIOLogicalUnit_acls || exit $?
 	return $OCF_SUCCESS
     fi
 
