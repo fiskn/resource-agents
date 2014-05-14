@@ -1,31 +1,25 @@
 #!/bin/bash
 #
+# LIOTarget
 #
-# 	LIOTarget OCF RA. Exports and manages LIO targets.
+# Description: Exports and manages LIO targets.
 #
-#   (c) 2009-2010 Florian Haas, Dejan Muhamedagic,
-#                 and Linux-HA contributors
+# Authors:     Andreas Kurz
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of version 2 of the GNU General Public License as
-# published by the Free Software Foundation.
+# Support:     linux-ha@lists.linux-ha.org
+# License:     GNU General Public License (GPL)
 #
-# This program is distributed in the hope that it would be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# (c) 2014     hastexo Professional Services GmbH
 #
-# Further, this software is distributed without any warranty that it is
-# free of the rightful claim of any third person regarding infringement
-# or the like.  Any license provided herein, whether implied or
-# otherwise, applies only to this software file.  Patent licenses, if
-# any, provided herein do not apply to combinations of this program with
-# other software, or any other product whatsoever.
+# This resource agent is derived from the iSCSITarget resource
+# agent, which itself is made available to the public under the
+# following copyright:
 #
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write the Free Software Foundation,
-# Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
+# (c) 2009-2010 Florian Haas, Dejan Muhamedagic,
+#               and Linux-HA contributors
 #
-
+# See usage() function below for more details ...
+#
 #######################################################################
 # Initialization:
 : ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
