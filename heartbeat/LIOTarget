@@ -36,6 +36,16 @@ OCF_RESKEY_iscsi_portals_default="0.0.0.0:3260"
 
 # Lockfile, used for selecting a target ID
 LOCKFILE=${HA_RSCTMP}/LIOTarget-${OCF_RESKEY_fabric}.lock
+
+# Set cli tool based on fabric type
+case ${OCF_RESKEY_fabric} in
+    iscsi)
+        CLI="lio_node"
+    ;;
+    qla2xxx)
+        CLI="tcm_node"
+    ;;
+esac
 #######################################################################
 
 meta_data() {
