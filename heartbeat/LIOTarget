@@ -84,9 +84,8 @@ FC targets use a World Wide Port Name (WWPN). Each World Wide Name (WWN)
 
 <parameter name="iscsi_portals" required="0" unique="0">
 <longdesc lang="en">
-iSCSI network portal addresses. Not supported by all
-implementations. If unset, the default is to create one portal that
-listens on ${OCF_RESKEY_iscsi_portals_default}.
+iSCSI network portal addresses. If unset, the default is
+to create one portal that listens on ${OCF_RESKEY_iscsi_portals_default}.
 </longdesc>
 <shortdesc lang="en">iSCSI portal addresses</shortdesc>
 <content type="string" default="${OCF_RESKEY_iscsi_portals_default}"/>
