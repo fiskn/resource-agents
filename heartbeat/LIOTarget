@@ -175,56 +175,55 @@ LIOTarget_start() {
     local value
     local initiator
     local portal
+    local ports
 
-    case $OCF_RESKEY_fabric in
-	iscsi)
-	    # lio distinguishes between targets and target portal
-	    # groups (TPGs). We will always create one TPG, with the
-	    # number 1. In lio, creating a network portal
-	    # automatically creates the corresponding target if it
-	    # doesn't already exist.
-	    for portal in ${OCF_RESKEY_portals}; do
-		ocf_run lio_node --addnp ${OCF_RESKEY_iqn} 1 \
-		    ${portal} || exit $OCF_ERR_GENERIC
-	    done
-	    # in lio, we can set target parameters by manipulating
-	    # the appropriate configfs entries
-	    for param in ${OCF_RESKEY_additional_parameters}; do
-		name=${param%=*}
-		value=${param#*=}
-		configfs_path="/sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn}/tpgt_1/param/${name}"
-		if [ -e ${configfs_path} ]; then
-		    echo ${value} > ${configfs_path} || exit $OCF_ERR_GENERIC
-		else
-		    ocf_log warn "Unsupported iSCSI target parameter ${name}: will be ignored."
-		fi
-	    done
-	    # lio does per-initiator filtering by default. To disable
-	    # this, we need to switch the target to "permissive mode".
-	    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-		for initiator in ${OCF_RESKEY_allowed_initiators}; do
-		    ocf_run lio_node --addnodeacl ${OCF_RESKEY_iqn} 1 \
-			${initiator} || exit $OCF_ERR_GENERIC
-		done
-	    else
-		ocf_run lio_node --permissive ${OCF_RESKEY_iqn} 1 || exit $OCF_ERR_GENERIC
-		# permissive mode enables read-only access by default,
-		# so we need to change that to RW to be in line with
-		# the other implementations.
-		echo 0 > "/sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn}/tpgt_1/attrib/demo_mode_write_protect"
-		if [ `cat /sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn}/tpgt_1/attrib/demo_mode_write_protect` -ne 0 ]; then
-		    ocf_log err "Failed to disable write protection for target ${OCF_RESKEY_iqn}."
-		    exit $OCF_ERR_GENERIC
-		fi
-	    fi
-	    # TODO: add CHAP authentication support when it gets added
-	    # back into LIO
-	    ocf_run lio_node --disableauth ${OCF_RESKEY_iqn} 1 || exit $OCF_ERR_GENERIC
-	    # Finally, we need to enable the target to allow
-	    # initiators to connect
-	    ocf_run lio_node --enabletpg=${OCF_RESKEY_iqn} 1 || exit $OCF_ERR_GENERIC
-	    ;;
+    # lio distinguishes between targets and target portal
+    # groups (TPGs). We will always create one TPG, with the
+    # number 1. In lio, creating a network portal
+    # automatically creates the corresponding target if it
+    # doesn't already exist.
+    case ${OCF_RESKEY_fabric} in
+        iscsi)
+            ports=${OCF_RESKEY_iscsi_portals}
+        ;;
+        qla2xxx)
+            ports=${OCF_RESKEY_fc_ports}
+        ;;
     esac
+
+    for portal in ${ports}; do
+      ocf_run $CLI --addnp ${OCF_RESKEY_id} 1 \
+          ${portal} || exit $OCF_ERR_GENERIC
+    done
+
+    # in lio, we can set target parameters by manipulating
+    # the appropriate configfs entries
+    for param in ${OCF_RESKEY_additional_parameters}; do
+	name=${param%=*}
+	value=${param#*=}
+	configfs_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/param/${name}"
+	if [ -e ${configfs_path} ]; then
+	    echo ${value} > ${configfs_path} || exit $OCF_ERR_GENERIC
+	else
+	    ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
+	fi
+    done
+    # lio does per-initiator filtering by default.
+    # NO DEMO MODE enabled
+    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+	for initiator in ${OCF_RESKEY_allowed_initiators}; do
+	    ocf_run $CLI --addnodeacl ${OCF_RESKEY_id} 1 \
+		${initiator} || exit $OCF_ERR_GENERIC
+	done
+    fi
+    # TODO: add CHAP authentication support when it gets added
+    # back into LIOs iscsi target
+    if [ "${OCF_RESKEY_fabric}" = "iscsi" ]; then
+        ocf_run $CLI --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+        # Finally, we need to enable the iscsi target to allow
+        # initiators to connect
+        ocf_run $CLI --enabletpg=${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+    fi
 
     return $OCF_SUCCESS
 }
