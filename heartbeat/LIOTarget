@@ -236,7 +236,7 @@ LIOTarget_stop() {
 	    iscsi)
 		# In lio, removing a target automatically removes all
 		# associated TPGs, network portals, and LUNs.
-		ocf_run lio_node --deliqn ${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
+		ocf_run $CLI --deliqn ${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
 		;;
 	esac
     fi
