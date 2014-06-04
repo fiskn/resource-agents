@@ -554,6 +554,13 @@ iSCSILogicalUnit_monitor() {
                      fi
                  fi
             done
+            if [[ $index -eq 0 ]]; then
+                if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+                    lio_set_alua_access_state || \
+                    ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!"
+                fi
+                return $OCF_SUCCESS
+            fi
             # catch only "half"-configured LUNs, manual intervention
             # may be needed
             if [[ $index -ne ${#iqns[@]} ]]; then
