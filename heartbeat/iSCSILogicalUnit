@@ -419,6 +419,20 @@ iSCSILogicalUnit_start() {
 	        fi
             fi
 
+            for target in ${OCF_RESKEY_target_iqn}; do
+	        ocf_run lio_node --addlun=${target} 1 ${OCF_RESKEY_lun} \
+	            ${OCF_RESOURCE_INSTANCE} ${backstore}/${OCF_RESOURCE_INSTANCE} \
+                    || exit $OCF_ERR_GENERIC
+            done
+
+            if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+                for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                    for target in ${OCF_RESKEY_target_iqn}; do
+                         ocf_run lio_node --addlunacl=${target} 1 \
+                              ${initiator} ${OCF_RESKEY_lun} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    done
+                done
+            fi
 	    ;;
     esac
 
