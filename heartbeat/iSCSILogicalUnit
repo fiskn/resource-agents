@@ -263,6 +263,18 @@ Expects to have a fully populated OCF RA-compliant environment set.
 END
 }
 
+lio_get_backstore() {
+    local bstype
+    # use blockio if path points to a block device, fileio
+    # otherwise.
+    if [ -b "${OCF_RESKEY_path}" ]; then
+        bstype="iblock"
+    else
+        bstype="fileio"
+    fi
+    echo "${bstype}_${OCF_RESKEY_lio_iblock}"
+}
+
 iSCSILogicalUnit_start() {
     iSCSILogicalUnit_monitor
     if [ $? =  $OCF_SUCCESS ]; then
