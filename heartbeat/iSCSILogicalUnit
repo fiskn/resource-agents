@@ -458,7 +458,7 @@ iSCSILogicalUnit_start() {
 
 iSCSILogicalUnit_stop() {
     iSCSILogicalUnit_monitor
-    if [ $? =  $OCF_SUCCESS ]; then
+    if [ $? !=  $OCF_NOT_RUNNING ]; then
 	case $OCF_RESKEY_implementation in
 	    iet)
 		# IET allows us to remove LUs while they are in use
@@ -480,17 +480,28 @@ iSCSILogicalUnit_stop() {
 		done
 		;;
 	    lio)
+               local bstype
                if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-                       for initiator in ${OCF_RESKEY_allowed_initiators}; do
-                               ocf_run lio_node --dellunacl=${OCF_RESKEY_target_iqn} 1 \
-                               ${initiator} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                   for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                       for target in ${OCF_RESKEY_target_iqn}; do
+                          if [ -e  "/sys/kernel/config/target/iscsi/${target}/tpgt_1/acls/${initiator}/lun_${OCF_RESKEY_lun}" ]; then
+                             ocf_run lio_node --dellunacl=${target} 1 \
+                                 ${initiator} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                          fi
                        done
+                   done
                fi
-		ocf_run lio_node --dellun=${OCF_RESKEY_target_iqn} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-		ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
+               for target in ${OCF_RESKEY_target_iqn}; do
+                   if [ -e  "/sys/kernel/config/target/iscsi/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}" ]; then
+	               ocf_run lio_node --dellun=${target} 1 \
+                           ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                   fi
+               done
+               backstore="$(lio_get_backstore)"
+	       ocf_run tcm_node --freedev=${backstore}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
 	esac
     fi
-    
+
     return $OCF_SUCCESS
 }
 
