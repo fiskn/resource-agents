@@ -142,6 +142,7 @@ LIOTarget_start() {
     local initiator
     local portal
     local ports
+    local configfs_path
 
     # lio distinguishes between targets and target portal
     # groups (TPGs). We will always create one TPG, with the
@@ -151,16 +152,17 @@ LIOTarget_start() {
     case ${OCF_RESKEY_fabric} in
         iscsi)
             ports=${OCF_RESKEY_iscsi_portals}
+            for portal in ${ports}; do
+              ocf_run lio_node --addnp ${OCF_RESKEY_id} 1 \
+                  ${portal} || exit $OCF_ERR_GENERIC
+            done
         ;;
         qla2xxx)
-            ports=${OCF_RESKEY_fc_ports}
+            # no nice lio-utils support for FC targets
+            mkdir -p /sys/kernel/config/target/qla2xxx/${OCF_RESKEY_id}/tpgt_1 \
+                || exit $OCF_ERR_GENERIC
         ;;
     esac
-
-    for portal in ${ports}; do
-      ocf_run $CLI --addnp ${OCF_RESKEY_id} 1 \
-          ${portal} || exit $OCF_ERR_GENERIC
-    done
 
     # in lio, we can set target parameters by manipulating
     # the appropriate configfs entries
@@ -174,6 +176,7 @@ LIOTarget_start() {
 	    ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
 	fi
     done
+
     # lio does per-initiator filtering by default.
     # NO DEMO MODE enabled
     if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
