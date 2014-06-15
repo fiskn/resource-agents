@@ -231,19 +231,13 @@ LIOTarget_stop() {
 }
 
 LIOTarget_monitor() {
-    case $OCF_RESKEY_fabric in
-	iscsi)
-	    # if we have no configfs entry for the target, it's
-	    # definitely stopped
-	    [ -d /sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn} ] || return $OCF_NOT_RUNNING
-	    # if the target is there, but its TPG is not enabled, then
-	    # we also consider it stopped
-	    [ `cat /sys/kernel/config/target/iscsi/${OCF_RESKEY_iqn}/tpgt_1/enable` -eq 1 ] || return $OCF_NOT_RUNNING
-	    return $OCF_SUCCESS
-	    ;;
-    esac
-    
-    return $OCF_NOT_RUNNING
+    # if we have no configfs entry for the target, it's
+    # definitely stopped
+    [ -d /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id} ] || return $OCF_NOT_RUNNING
+    # if the target is there, but its TPG is not enabled, then
+    # we also consider it stopped
+    [ `cat /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/enable` -eq 1 ] || return $OCF_NOT_RUNNING
+    return $OCF_SUCCESS
 }
 
 LIOTarget_validate() {
