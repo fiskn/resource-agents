@@ -202,14 +202,27 @@ LIOTarget_start() {
 }
 
 LIOTarget_stop() {
+    local rc
     LIOTarget_monitor
     if [ $? =  $OCF_SUCCESS ]; then
-	local tid
 	case $OCF_RESKEY_fabric in
 	    iscsi)
 		# In lio, removing a target automatically removes all
 		# associated TPGs, network portals, and LUNs.
 		ocf_run lio_node --deliqn=${OCF_RESKEY_id} || exit $OCF_ERR_GENERIC
+		;;
+	    qla2xxx)
+                # Unfortunately older targetcli has no meaningfull
+                # return codes
+	        echo "/qla2xxx delete ${OCF_RESKEY_id}" | targetcli
+		# This can take some seconds,
+                # spin on monitor
+                rc=$OCF_SUCCESS
+                while [ $rc = $OCF_SUCCESS ]; do
+		    sleep 2
+                    LIOTarget_monitor
+		    rc=$?
+                done
 		;;
 	esac
     fi
