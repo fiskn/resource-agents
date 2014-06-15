@@ -37,15 +37,6 @@ OCF_RESKEY_iscsi_portals_default="0.0.0.0:3260"
 # Lockfile, used for selecting a target ID
 LOCKFILE=${HA_RSCTMP}/LIOTarget-${OCF_RESKEY_fabric}.lock
 
-# Set cli tool based on fabric type
-case ${OCF_RESKEY_fabric} in
-    iscsi)
-        CLI="lio_node"
-    ;;
-    qla2xxx)
-        CLI="tcm_node"
-    ;;
-esac
 #######################################################################
 
 meta_data() {
@@ -212,18 +203,22 @@ LIOTarget_start() {
     # NO DEMO MODE enabled
     if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
 	for initiator in ${OCF_RESKEY_allowed_initiators}; do
-	    ocf_run $CLI --addnodeacl ${OCF_RESKEY_id} 1 \
+	    ocf_run lio_node --addnodeacl ${OCF_RESKEY_id} 1 \
 		${initiator} || exit $OCF_ERR_GENERIC
 	done
     fi
     # TODO: add CHAP authentication support when it gets added
     # back into LIOs iscsi target
     if [ "${OCF_RESKEY_fabric}" = "iscsi" ]; then
-        ocf_run $CLI --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
-        # Finally, we need to enable the iscsi target to allow
-        # initiators to connect
-        ocf_run $CLI --enabletpg=${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
-    fi
+        ocf_run  lio_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+    else
+        ocf_run  tcm_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+    fi 
+
+    # Finally, we need to enable the target to allow
+    # initiators to connect
+    echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/enable \
+        || exit $OCF_ERR_GENERIC
 
     return $OCF_SUCCESS
 }
@@ -236,7 +231,7 @@ LIOTarget_stop() {
 	    iscsi)
 		# In lio, removing a target automatically removes all
 		# associated TPGs, network portals, and LUNs.
-		ocf_run $CLI --deliqn ${OCF_RESKEY_iqn} || exit $OCF_ERR_GENERIC
+		ocf_run lio_node --deliqn=${OCF_RESKEY_id} || exit $OCF_ERR_GENERIC
 		;;
 	esac
     fi
