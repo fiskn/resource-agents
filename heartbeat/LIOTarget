@@ -244,9 +244,9 @@ LIOTarget_validate() {
     # Do we have all required variables?
     local required_vars
     case $OCF_RESKEY_fabric in
-	iscsi)
-	    required_vars="iqn tid"
-	    ;;
+	iscsi|qla2xxx)
+	    required_vars="id"
+	;;
     esac
     for var in ${required_vars}; do
 	param="OCF_RESKEY_${var}"
@@ -272,7 +272,7 @@ LIOTarget_validate() {
     local var
     local envar
     case $OCF_RESKEY_fabric in
-	iscsi)
+	iscsi|qla2xxx)
 	    # TODO: Remove incoming_username and incoming_password
 	    # from this check when LIO 3.0 gets CHAP authentication
 	    unsupported_params="tid incoming_username incoming_password"
@@ -299,12 +299,13 @@ LIOTarget_validate() {
 	    iscsi|qla2xxx)
 		check_binary tcm_node
 		check_binary lio_node
+		check_binary targetcli
 		;;
 	esac
 
         # Is the required kernel functionality available?
 	case $OCF_RESKEY_fabric in
-	    iscsi)
+	    iscsi|qla2xxx)
 	        # lio needs configfs to be mounted
 		if ! grep -Eq "^.*/sys/kernel/config[[:space:]]+configfs" /proc/mounts; then
 		    ocf_log err "configfs not mounted at /sys/kernel/config -- check if required modules are loaded."
