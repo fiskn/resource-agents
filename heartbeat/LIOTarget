@@ -75,18 +75,12 @@ FC targets use a World Wide Port Name (WWPN). Each World Wide Name (WWN)
 
 <parameter name="iscsi_portals" required="0" unique="0">
 <longdesc lang="en">
-iSCSI network portal addresses. If unset, the default is
-to create one portal that listens on ${OCF_RESKEY_iscsi_portals_default}.
+White space separated list of iSCSI network portal addresses.
+If unset, the default is to create one portal that listens on
+${OCF_RESKEY_iscsi_portals_default}.
 </longdesc>
 <shortdesc lang="en">iSCSI portal addresses</shortdesc>
 <content type="string" default="${OCF_RESKEY_iscsi_portals_default}"/>
-</parameter>
-
-<parameter name="fc_ports" required="0" unique="0">
-<longdesc lang="en">FC WWPN addresses to use by the target
-</longdesc>
-<shortdesc lang="en">FC WWPNs</shortdesc>
-<content type="string"/>
 </parameter>
 
 <parameter name="allowed_initiators" required="0" unique="0">
@@ -99,25 +93,6 @@ not set, access to this target will not be allowed from any initiator.
 <shortdesc lang="en">List of initiators allowed to connect
 to this target</shortdesc>
 <content type="string" default=""/>
-</parameter>
-
-<parameter name="incoming_username" required="0" unique="1">
-<longdesc lang="en">
-A username used for incoming initiator authentication. If unspecified,
-allowed initiators will be able to log in without authentication.
-This is a unique parameter, as it not allowed to re-use a single
-username across multiple target instances.
-</longdesc>
-<shortdesc lang="en">Incoming account username</shortdesc>
-<content type="string"/>
-</parameter>
-
-<parameter name="incoming_password" required="0" unique="0">
-<longdesc lang="en">
-A password used for incoming initiator authentication.
-</longdesc>
-<shortdesc lang="en">Incoming account password</shortdesc>
-<content type="string"/>
 </parameter>
 
 <parameter name="additional_parameters" required="0" unique="0">
