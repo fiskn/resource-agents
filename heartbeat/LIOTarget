@@ -189,7 +189,6 @@ LIOTarget_start() {
     # back into LIOs iscsi target
     if [ "${OCF_RESKEY_fabric}" = "iscsi" ]; then
         ocf_run  lio_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
-    else
         ocf_run  tcm_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
     fi 
 
