@@ -372,20 +372,21 @@ LIOLogicalUnit_validate() {
 	    iscsi)
 		check_binary tcm_node
 		check_binary lio_node
+                ;;
+	    qla2xxx)
+		check_binary tcm_node
+		check_binary targetcli
 		;;
 	esac
 
         # Is the required kernel functionality available?
 	case $OCF_RESKEY_fabric in
-	    iet)
-		[ -d /proc/net/iet ]
+	    iscsi|qla2xxx)
+		[ -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]
 		if [ $? -ne 0 ]; then
-		    ocf_log err "/proc/net/iet does not exist or is not a directory -- check if required modules are loaded."
+		    ocf_log err "/sys/kernel/config/target/${OCF_RESKEY_fabric} does not exist or is not a directory -- check if required modules are loaded."
 		    exit $OCF_ERR_INSTALLED
 		fi
-		;;
-	    tgt)
-	        # tgt is userland only
 		;;
 	esac
     fi
