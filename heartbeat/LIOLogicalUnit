@@ -182,7 +182,7 @@ LIOLogicalUnit_acls() {
     local acl_full_path
     local acls_path
 
-    acls_path="/sys/kernel/config/target/iscsi/${OCF_RESKEY_target_id}/tpgt_1/acls"
+    acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_target_id}/tpgt_1/acls"
     # Get all existing acls for this LUN, fill it in an array.
     acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
 
@@ -195,8 +195,11 @@ LIOLogicalUnit_acls() {
                 acl_full_path="${acls_path}/${initiator}/lun_${OCF_RESKEY_lun}"
                 # Is the acl already in place?
                 if [[ ! -d "${acl_full_path}" ]]; then
-                    ocf_run lio_node --addlunacl=${OCF_RESKEY_target_id} 1 \
-                    ${initiator} ${OCF_RESKEY_lun} ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    # What "lio_node --addlunacl" does
+                    # for iSCSI works also for qla2xxx
+                    mkdir -p ${acl_full_path} && \
+                    ln -sf ${acls_path}/../lun/lun_${OCF_RESKEY_lun} \
+                    ${acl_full_path}/lun_${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
                 fi
                 # Remove valid acls from "clean-them-up"-array.
                 for index in ${!acls_del[@]}; do
@@ -215,7 +218,14 @@ LIOLogicalUnit_acls() {
         if [[ -d $acl ]]; then
             # Removing the lun subdir, has the same effect
             # as lio_node --dellunacl.
-            rm -f ${acl}/lio_lun && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+            case ${OCF_RESKEY_fabric} in
+                iscsi)
+                    rm -f ${acl}/lio_lun && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+                    ;;
+                qla2xxx)
+                    rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+                    ;;
+            esac
         fi
         # Delete node-acl if no more lun assignments are remaining
         acl_node="${acl%/*}"
