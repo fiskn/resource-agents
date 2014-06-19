@@ -246,25 +246,25 @@ LIOLogicalUnit_start() {
 	return $OCF_SUCCESS
     fi
 
-    local params
+    local lun_path
+    local iblock_path
+    lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_target_id}/tpgt_1/lun/lun_${OCF_RESKEY_lun}"
+    dev_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}"
 
-    case $OCF_RESKEY_fabric in
-	iscsi)
-	    # For lio, we first have to create a target device, then
-	    # add it to the Target Portal Group as an LU.
-	    ocf_run tcm_node --createdev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-		${OCF_RESKEY_path} || exit $OCF_ERR_GENERIC
-	    if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
-		ocf_run tcm_node --setunitserial=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-		    ${OCF_RESKEY_scsi_sn} || exit $OCF_ERR_GENERIC
-	    fi
-	    ocf_run lio_node --addlun=${OCF_RESKEY_target_id} 1 ${OCF_RESKEY_lun} \
-		${OCF_RESOURCE_INSTANCE} iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
-            if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-                LIOLogicalUnit_acls || exit $OCF_ERR_GENERIC
-            fi
-	    ;;
-    esac
+    # For lio, we first have to create a target device, then
+    # add it to the Target Portal Group as an LU.
+    ocf_run tcm_node --createdev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+        ${OCF_RESKEY_path} || exit $OCF_ERR_GENERIC
+    if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
+	ocf_run tcm_node --setunitserial=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+            ${OCF_RESKEY_scsi_sn} || exit $OCF_ERR_GENERIC
+    fi
+    mkdir -p ${lun_path} && \
+    ln -s ${dev_path} ${lun_path}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
+
+    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+        LIOLogicalUnit_acls || exit $OCF_ERR_GENERIC
+    fi
 
     return $OCF_SUCCESS
 }
