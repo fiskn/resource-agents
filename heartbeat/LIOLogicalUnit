@@ -181,58 +181,62 @@ LIOLogicalUnit_acls() {
     local acls_del
     local acl_full_path
     local acls_path
+    local target
 
-    acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_target_id}/tpgt_1/acls"
-    # Get all existing acls for this LUN, fill it in an array.
-    acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
+    # Adjust acls for all targets this LUN is associated to
+    for target in ${OCF_RESKEY_target_iqn}; do
+        acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/acls"
+        # Get all existing acls for this LUN, fill it in an array.
+        acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
 
-    # Only need to add acls on start,monitor or reload
-    case $__OCF_ACTION in
-        monitor|start|reload)
-            # Add LUN acl if not already set
-            ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}"
-            for initiator in $(echo ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
-                acl_full_path="${acls_path}/${initiator}/lun_${OCF_RESKEY_lun}"
-                # Is the acl already in place?
-                if [[ ! -d "${acl_full_path}" ]]; then
-                    # What "lio_node --addlunacl" does
-                    # for iSCSI works also for qla2xxx
-                    mkdir -p ${acl_full_path} && \
-                    ln -sf ${acls_path}/../lun/lun_${OCF_RESKEY_lun} \
-                    ${acl_full_path}/lun_${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-                fi
-                # Remove valid acls from "clean-them-up"-array.
-                for index in ${!acls_del[@]}; do
-                    if [ "${acls_del[$index]}" = "$acl_full_path" ]; then
-			unset acls_del[$index]
-                        break
+        # Only need to add acls on start,monitor or reload
+        case $__OCF_ACTION in
+            monitor|start|reload)
+                # Add LUN acl if not already set
+                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}"
+                for initiator in $(echo ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
+                    acl_full_path="${acls_path}/${initiator}/lun_${OCF_RESKEY_lun}"
+                    # Is the acl already in place?
+                    if [[ ! -d "${acl_full_path}" ]]; then
+                        # What "lio_node --addlunacl" does
+                        # for iSCSI works also for qla2xxx
+                        mkdir -p ${acl_full_path} && \
+                        ln -sf ${acls_path}/../lun/lun_${OCF_RESKEY_lun} \
+                        ${acl_full_path}/lun_${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
                     fi
+                    # Remove valid acls from "clean-them-up"-array.
+                    for index in ${!acls_del[@]}; do
+                        if [ "${acls_del[$index]}" = "$acl_full_path" ]; then
+                        unset acls_del[$index]
+                            break
+                        fi
+                    done
                 done
-            done
-        ;;
-    esac
-    # Check if there is an acl for the current LUN, that is
-    # not allowed. On "stop" all acls are deleted for this LUN.
-    ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}"
-    for acl in ${acls_del[@]}; do
-        if [[ -d $acl ]]; then
-            # Removing the lun subdir, has the same effect
-            # as lio_node --dellunacl.
-            case ${OCF_RESKEY_fabric} in
-                iscsi)
-                    rm -f ${acl}/lio_lun && rmdir ${acl}  || exit $OCF_ERR_GENERIC
-                    ;;
-                qla2xxx)
-                    rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl}  || exit $OCF_ERR_GENERIC
-                    ;;
-            esac
-        fi
-        # Delete node-acl if no more lun assignments are remaining
-        acl_node="${acl%/*}"
-        if ! ls -dU ${acl_node}/lun_* >/dev/null 2>&1 ; then
-            ocf_log debug "No more lun acls for initiator ${acl_node##*/}, delete node acl"
-            rmdir ${acl_node}  || exit $OCF_ERR_GENERIC
-        fi
+            ;;
+        esac
+        # Check if there is an acl for the current LUN, that is
+        # not allowed. On "stop" all acls are deleted for this LUN.
+        ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}"
+        for acl in ${acls_del[@]}; do
+            if [[ -d $acl ]]; then
+                # Removing the lun subdir, has the same effect
+                # as lio_node --dellunacl.
+                case ${OCF_RESKEY_fabric} in
+                    iscsi)
+                        rm -f ${acl}/lio_lun && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+                        ;;
+                    qla2xxx)
+                        rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+                        ;;
+                esac
+            fi
+            # Delete node-acl if no more lun assignments are remaining
+            acl_node="${acl%/*}"
+            if ! ls -dU ${acl_node}/lun_* >/dev/null 2>&1 ; then
+                ocf_log debug "No more lun acls for initiator ${acl_node##*/}, delete node acl"
+                rmdir ${acl_node}  || exit $OCF_ERR_GENERIC
+            fi
+        done
     done
 
     return $OCF_SUCCESS
