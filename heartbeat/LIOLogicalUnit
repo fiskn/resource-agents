@@ -51,8 +51,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOLogicalUnit" version="0.1">
-<version>0.1</version>
+<resource-agent name="LIOLogicalUnit" version="0.2">
+<version>0.2</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a LIO target. An Logical unit is a subdivision of 
@@ -72,9 +72,10 @@ The LIO target supports several fabric types. Must be one of "iscsi" or
 
 <parameter name="target_id" required="1" unique="0">
 <longdesc lang="en">
-The target this Logical Unit belongs to. For an iSCSI target this has to
-target iSCSI Qualified Name (IQN). Fibre Channel (qla2xxx) targets use
-a World Wide Name (WWN) for identification.
+A white-space separated list of targets this Logical Unit belongs to. 
+For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
+Fibre Channel (qla2xxx) targets use a World Wide Name (WWN) for
+identification.
 </longdesc>
 <shortdesc lang="en">Target identifier</shortdesc>
 <content type="string" />
@@ -184,7 +185,7 @@ LIOLogicalUnit_acls() {
     local target
 
     # Adjust acls for all targets this LUN is associated to
-    for target in ${OCF_RESKEY_target_iqn}; do
+    for target in ${OCF_RESKEY_target_id}; do
         acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/acls"
         # Get all existing acls for this LUN, fill it in an array.
         acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
@@ -266,7 +267,7 @@ LIOLogicalUnit_start() {
             ${OCF_RESKEY_scsi_sn} || exit $OCF_ERR_GENERIC
     fi
     # A LU can be exported by serveral targets
-    for target in ${OCF_RESKEY_target_iqn}; do
+    for target in ${OCF_RESKEY_target_id}; do
         lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}"
         mkdir -p ${lun_path} && \
         ln -s ${dev_path} ${lun_path}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
@@ -296,7 +297,7 @@ LIOLogicalUnit_stop() {
     if [ $? =  $OCF_SUCCESS ]; then
         LIOLogicalUnit_acls
         # Delete LUN for all its targets
-        for target in ${OCF_RESKEY_target_iqn}; do
+        for target in ${OCF_RESKEY_target_id}; do
 	    case $OCF_RESKEY_fabric in
 	        iscsi)
 	            ocf_run lio_node --dellun=${target} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
@@ -319,7 +320,7 @@ LIOLogicalUnit_monitor() {
 
     cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
     # Check all targets
-    for target in ${OCF_RESKEY_target_iqn}; do
+    for target in ${OCF_RESKEY_target_id}; do
         cfgfs_path_lun="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_target_id}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}/udev_path"
         [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
         [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ] && \
