@@ -290,20 +290,22 @@ LIOLogicalUnit_reload() {
 }
 
 LIOLogicalUnit_stop() {
-    local lun_path
-    lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_target_id}/tpgt_1/lun/lun_${OCF_RESKEY_lun}"
+    local target
 
     LIOLogicalUnit_monitor
     if [ $? =  $OCF_SUCCESS ]; then
         LIOLogicalUnit_acls
-	case $OCF_RESKEY_fabric in
-	    iscsi)
-		ocf_run lio_node --dellun=${OCF_RESKEY_target_id} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-                ;;
-	    qla2xxx)
-                echo "/qla2xxx/${OCF_RESKEY_target_id}/luns delete lun=${OCF_RESKEY_lun}" | targetcli
-                ;;
-	esac
+        # Delete LUN for all its targets
+        for target in ${OCF_RESKEY_target_iqn}; do
+	    case $OCF_RESKEY_fabric in
+	        iscsi)
+	            ocf_run lio_node --dellun=${target} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    ;;
+	        qla2xxx)
+                    echo "/qla2xxx/${target}/luns delete lun=${OCF_RESKEY_lun}" | targetcli
+                    ;;
+	    esac
+        done
 	ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
     fi
     
