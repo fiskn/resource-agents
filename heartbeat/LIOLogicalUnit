@@ -379,14 +379,18 @@ LIOLogicalUnit_monitor() {
     local cfgfs_path_lun
     local cfgfs_path_core
     local target
+    local index
 
     cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
+    declare -a ids=( $(echo ${OCF_RESKEY_target_id}) )
+    index=${#ids[@]}
     # Check all targets
     for target in ${OCF_RESKEY_target_id}; do
         cfgfs_path_lun="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}/udev_path"
-        [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
-        [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ] && \
-        return $OCF_SUCCESS
+        if [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
+           [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ]; then
+                (( index-- ))
+        fi 
         # Catch the case where either only the lun _or_ the backend
         # device is available (XOR). We already know not both are valid.
         [ -e ${cfgfs_path_lun} ] && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ] && \
@@ -396,6 +400,20 @@ LIOLogicalUnit_monitor() {
     [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ] && \
     ocf_log error "Backend device iblock_${OCF_RESKEY_lun} configured but lun ${OCF_RESKEY_lun} not connected." && \
     return $OCF_ERR_GENERIC
+
+    if [[ $index -eq 0 ]]; then
+        if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+            lio_set_alua_access_state || \
+            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!"
+        fi
+        return $OCF_SUCCESS
+    fi
+    # catch only "half"-configured LUNs, manual intervention
+    # may be needed
+    if [[ $index -ne ${#ids[@]} ]]; then
+        ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated to all its targets!"
+        return $OCF_ERR_GENERIC
+    fi
     
     return $OCF_NOT_RUNNING
 }
