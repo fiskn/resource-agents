@@ -51,8 +51,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOLogicalUnit" version="0.2">
-<version>0.2</version>
+<resource-agent name="LIOLogicalUnit" version="0.3">
+<version>0.3</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a LIO target. An Logical unit is a subdivision of 
@@ -150,6 +150,19 @@ in /sys/kernel/config/target/core/.
 </longdesc>
 <shortdesc lang="en">LIO iblock device number</shortdesc>
 <content type="integer" default="0"/>
+</parameter>
+
+<parameter name="lio_alua_tpg" required="0" unique="0">
+<longdesc lang="en">
+White-space separated list of LIO Asymmetric Logical Unit Assignment
+ (ALUA) target port group names.
+
+SCSI-4 ALUA is a multipathing method that allows each target port to
+manage access states and path attributes using an explict method, or
+implicitly using target-side configFS operations.
+</longdesc>
+<shortdesc lang="en">LIO ALUA target port group name</shortdesc>
+<content type="string"/>
 </parameter>
 
 </parameters>
