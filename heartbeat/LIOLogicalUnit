@@ -384,7 +384,7 @@ LIOLogicalUnit_stop() {
 	            ocf_run lio_node --dellun=${target} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
                     ;;
 	        qla2xxx)
-                    echo "/qla2xxx/${target}/luns delete lun=${OCF_RESKEY_lun}" | targetcli
+                    echo -e "/qla2xxx/${target}/luns delete lun=${OCF_RESKEY_lun}\nexit\nexit" | targetcli
                     ;;
 	    esac
         done
