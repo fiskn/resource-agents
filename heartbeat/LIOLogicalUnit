@@ -302,14 +302,14 @@ LIOLogicalUnit_acls() {
 
 LIOLogicalUnit_start() {
     LIOLogicalUnit_monitor
-    if [ $? =  $OCF_SUCCESS ]; then
+    if [ $? -eq $OCF_SUCCESS ]; then
         # The lun seems to be availaddble, also verify/fix its acls
         LIOLogicalUnit_acls || exit $?
 	return $OCF_SUCCESS
     fi
 
     local lun_path
-    local iblock_path
+    local dev_path
     local target
     local tpg
     dev_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}"
@@ -335,8 +335,12 @@ LIOLogicalUnit_start() {
     # and assign the group to the lun
     if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
         for tpg in ${OCF_RESKEY_lio_alua_tpg}; do
+            lun_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua"
+            # Only add the ALUATPG if it does not already exist
+            if [ ! -d ${lun_path}/${tpg} ]; then
             ocf_run tcm_node --addaluatpg=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
                 ${tpg} || exit $OCF_ERR_GENERIC
+            fi
         done
         # Get an array of tpg names
         declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
