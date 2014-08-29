@@ -143,6 +143,42 @@ LIOTarget_start() {
     local portal
     local ports
     local configfs_path
+    local mod
+
+    # Be sure some default dirs are available
+    if [ ! -d /var/target/pr ]; then
+	mkdir -p /var/target/pr || {
+           ocf_log err "Unable to create /var/target/pr";
+           return $OCF_ERR_INSTALLED
+        }
+    fi
+    if [ ! -d /var/target/alua ]; then
+	mkdir -p /var/target/alua || {
+           ocf_log err "Unable to create /var/target/alua";
+           return $OCF_ERR_INSTALLED
+        }
+    fi
+
+    # Load core module and configfs if needed
+    if [ ! -d /sys/kernel/config ]; then
+	ocf_run modprobe -s configfs || {
+           ocf_log err "Unable to load configfs module";
+           return $OCF_ERR_INSTALLED
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: configfs module loaded"
+	ocf_run mount -t configfs configfs /sys/kernel/config || {
+           ocf_log err "Unable to mount configfs on /sys/kernel/config";
+           return $OCF_ERR_INSTALLED
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: configfs mounted on /sys/kernel/config"
+    fi
+    if [ ! -d /sys/kernel/config/target ]; then
+        ocf_run modprobe -s target_core_mod || {
+           ocf_log err "Unable to load target_core_mod module";
+           return $OCF_ERR_INSTALLED
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: target_core_mod module loaded."
+    fi
 
     # lio distinguishes between targets and target portal
     # groups (TPGs). We will always create one TPG, with the
@@ -151,6 +187,23 @@ LIOTarget_start() {
     # doesn't already exist.
     case ${OCF_RESKEY_fabric} in
         iscsi)
+            # Initiate the fabric if needed
+            if [ ! -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]; then
+                ocf_run modprobe -s  iscsi_target_mod || {
+                   ocf_log err "Unable to load iscsi_target_mod  module";
+                   return $OCF_ERR_INSTALLED
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi_target_mod module loaded."
+                ocf_run mkdir -p /sys/kernel/config/target/iscsi || {
+                   ocf_log err "Unable to create iscsi target configfs entry";
+                   return $OCF_ERR_INSTALLED
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi configfs entry created"
+                ocf_run echo -n 0 > /sys/kernel/config/target/iscsi/discovery_auth/enforce_discovery_authmodprobe target_core_mod || {
+                   ocf_log err "Unable to disable enforce of iSCSI Discovery authentication";
+                   return $OCF_ERR_INSTALLED
+                }
+            fi
             ports=${OCF_RESKEY_iscsi_portals}
             for portal in ${ports}; do
               ocf_run lio_node --addnp ${OCF_RESKEY_id} 1 \
@@ -158,6 +211,21 @@ LIOTarget_start() {
             done
         ;;
         qla2xxx)
+            # Initiate the fabric if needed
+            if [ ! -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]; then
+                for mod in fc qla2xxx; do
+                   ocf_run modprobe -s  tcm_${mod} || {
+                      ocf_log err "Unable to load tcm_${mod} module";
+                      return $OCF_ERR_INSTALLED
+                   }
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: tcm_${mod} module loaded."
+                   ocf_run mkdir -p /sys/kernel/config/target/${mods} || {
+                      ocf_log err "Unable to create $mods target configfs entry";
+                      return $OCF_ERR_INSTALLED
+                   }
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: $mods configfs entry created"
+                done
+            fi
             # no nice lio-utils support for FC targets
             mkdir -p /sys/kernel/config/target/qla2xxx/${OCF_RESKEY_id}/tpgt_1 \
                 || exit $OCF_ERR_GENERIC
@@ -299,22 +367,6 @@ LIOTarget_validate() {
 		check_binary tcm_node
 		check_binary lio_node
 		check_binary targetcli
-		;;
-	esac
-
-        # Is the required kernel functionality available?
-	case $OCF_RESKEY_fabric in
-	    iscsi|qla2xxx)
-	        # lio needs configfs to be mounted
-		if ! grep -Eq "^.*/sys/kernel/config[[:space:]]+configfs" /proc/mounts; then
-		    ocf_log err "configfs not mounted at /sys/kernel/config -- check if required modules are loaded."
-		    exit $OCF_ERR_INSTALLED
-		fi
-	        # check for configfs entries created by target_core_mod
-		if [ ! -d /sys/kernel/config/target ]; then
-		    ocf_log err "/sys/kernel/config/target does not exist or is not a directory -- check if required modules are loaded."
-		    exit $OCF_ERR_INSTALLED
-		fi
 		;;
 	esac
     fi
