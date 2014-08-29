@@ -364,7 +364,7 @@ LIOLogicalUnit_start() {
 LIOLogicalUnit_reload() {
     case $OCF_RESKEY_fabric in
 	iscsi|qla2xxx)
-            LIOLogicalUnit_acls
+            LIOLogicalUnit_start
 	    ;;
     esac
 
