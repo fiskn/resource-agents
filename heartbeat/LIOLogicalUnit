@@ -346,8 +346,10 @@ LIOLogicalUnit_start() {
         declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
         index=0
         for target in ${OCF_RESKEY_target_id}; do
-            ocf_run lio_node --setaluatpg=${target} 1 \
-                ${OCF_RESKEY_lun} ${tpgs[$index]} || exit $OCF_ERR_GENERIC
+            lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
+            # Do it manually and not with tcm_node, to also
+            # work with FC
+            echo ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
             (( index++ ))
         done
     fi
