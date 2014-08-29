@@ -256,8 +256,8 @@ LIOTarget_start() {
     # TODO: add CHAP authentication support when it gets added
     # back into LIOs iscsi target
     if [ "${OCF_RESKEY_fabric}" = "iscsi" ]; then
-        ocf_run  lio_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
-        ocf_run  tcm_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+        ocf_run lio_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+        ocf_run tcm_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
     fi 
 
     # Finally, we need to enable the target to allow
@@ -281,7 +281,7 @@ LIOTarget_stop() {
 	    qla2xxx)
                 # Unfortunately older targetcli has no meaningfull
                 # return codes
-	        echo "/qla2xxx delete ${OCF_RESKEY_id}" | targetcli
+	        echo -e "/qla2xxx delete ${OCF_RESKEY_id}\nexit\nexit" | targetcli
 		# This can take some seconds,
                 # spin on monitor
                 rc=$OCF_SUCCESS
