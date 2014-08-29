@@ -375,7 +375,7 @@ LIOLogicalUnit_stop() {
     local target
 
     LIOLogicalUnit_monitor
-    if [ $? =  $OCF_SUCCESS ]; then
+    if [ $? -eq $OCF_SUCCESS ]; then
         LIOLogicalUnit_acls
         # Delete LUN for all its targets
         for target in ${OCF_RESKEY_target_id}; do
@@ -427,10 +427,17 @@ LIOLogicalUnit_monitor() {
         return $OCF_SUCCESS
     fi
     # catch only "half"-configured LUNs, manual intervention
-    # may be needed
+    # may be needed ... but only on start or monitor
     if [[ $index -ne ${#ids[@]} ]]; then
-        ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated correctly to all its targets!"
-        return $OCF_ERR_GENERIC
+        case $__OCF_ACTION in
+            monitor|start)
+                ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated correctly to all its targets!"
+                exit $OCF_ERR_GENERIC
+                ;;
+            stop)
+                return $OCF_SUCCESS
+                ;;
+        esac
     fi
     
     return $OCF_NOT_RUNNING
