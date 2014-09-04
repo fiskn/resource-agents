@@ -208,7 +208,7 @@ lio_set_alua_access_state() {
     for tpgn in ${OCF_RESKEY_lio_alua_tpg}; do
         value=$(crm_attribute --type status \
             --node-uname $(crm_node -n) --attr-name alua#${tpgn} \
-            --get-value --quiet)
+            --get-value --quiet 2>/dev/null)
         # The group with the highest score should be
         # the optimized path
         if [[ $value -gt $highest ]]; then
@@ -221,12 +221,16 @@ lio_set_alua_access_state() {
     # unavailable ALUA access state "u"
     for tpgn in ${OCF_RESKEY_lio_alua_tpg}; do
         if [ "${tpgn}" != "${optimized}" ]; then
-            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn} u \
-                || return $OCF_ERR_GENERIC
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn} u || {
+                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
+                exit $OCF_ERR_GENERIC
+            }
             ocf_log debug "ALUA: $tpgn is not optimized"
         else
-            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn} o \
-               || return $OCF_ERR_GENERIC
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn} o || {
+                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
+                exit $OCF_ERR_GENERIC
+            }
             ocf_log debug "ALUA optimized is: ${optimized}"
         fi
     done
@@ -420,9 +424,10 @@ LIOLogicalUnit_monitor() {
     done
 
     if [[ $index -eq 0 ]]; then
+
+        # Now set the ALUA state
         if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
-            lio_set_alua_access_state || \
-            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!"
+            lio_set_alua_access_state
         fi
         return $OCF_SUCCESS
     fi
