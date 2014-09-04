@@ -305,12 +305,7 @@ LIOLogicalUnit_acls() {
 }
 
 LIOLogicalUnit_start() {
-    LIOLogicalUnit_monitor
-    if [ $? -eq $OCF_SUCCESS ]; then
-        # The lun seems to be availaddble, also verify/fix its acls
-        LIOLogicalUnit_acls || exit $?
-	return $OCF_SUCCESS
-    fi
+    LIOLogicalUnit_monitor && return $OCF_SUCCESS
 
     local lun_path
     local dev_path
@@ -424,6 +419,8 @@ LIOLogicalUnit_monitor() {
     done
 
     if [[ $index -eq 0 ]]; then
+        # The lun seems to be availaddble, also verify/fix its acls
+        LIOLogicalUnit_acls || exit $?
 
         # Now set the ALUA state
         if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
