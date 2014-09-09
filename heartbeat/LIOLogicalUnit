@@ -338,19 +338,26 @@ LIOLogicalUnit_start() {
             # Only add the ALUATPG if it does not already exist,
             # and always set a specific TPG id
             if [ ! -d ${lun_path}/${tpg%:*} ]; then
-            ocf_run tcm_node --addtgptgpwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
-                ${tpg%:*} ${tpg#*:} || exit $OCF_ERR_GENERIC
+                ocf_run tcm_node --addtgptgpwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
+                    ${tpg%:*} ${tpg#*:} || exit $OCF_ERR_GENERIC
+	        # Initially switch it into standby mode and
+                # only allow implicit state changes.
+                ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+                    ${tpgn%:*} s || exit $OCF_ERR_GENERIC
+                ocf_run tcm_node --setaluatype=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+                    ${tpg%:*} implict || exit $OCF_ERR_GENERIC
             fi
-        done
-        # Get an array of tpg names
-        declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
-        index=0
-        for target in ${OCF_RESKEY_target_id}; do
-            lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
-            # Do it manually and not with tcm_node, to also
-            # work with FC
-            echo ${tpgs[$index]%:*} > ${lun_path} || exit $OCF_ERR_GENERIC
-            (( index++ ))
+            # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
+            # for "multi-node targets"
+            for target in ${OCF_RESKEY_target_id}; do
+                # Only assign the ALUA TPG for this node
+                if [ "${tpg%:*}" -eq "$(crm_node -n)" ]; then
+                    lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
+                    # Do it manually and not with tcm_node, to also
+                    # work with FC
+                    echo ${tpg%:*} > ${lun_path} || exit $OCF_ERR_GENERIC
+                fi
+            done
         done
     fi
 
