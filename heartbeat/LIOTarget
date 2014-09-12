@@ -159,7 +159,7 @@ LIOTarget_start() {
         }
     fi
 
-    # Load core module and configfs if needed
+    # Load core modules and configfs if needed
     if [ ! -d /sys/kernel/config ]; then
 	ocf_run -q modprobe -s configfs || {
            ocf_log err "Unable to load configfs module";
@@ -173,11 +173,13 @@ LIOTarget_start() {
         ocf_log debug "${OCF_RESOURCE_INSTANCE}: configfs mounted on /sys/kernel/config"
     fi
     if [ ! -d /sys/kernel/config/target ]; then
-        ocf_run -q modprobe -s target_core_mod || {
-           ocf_log err "Unable to load target_core_mod module";
-           return $OCF_ERR_INSTALLED
-        }
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: target_core_mod module loaded."
+        for mod in mod iblock pscsi file ; do
+           ocf_run -q modprobe -s  target_core_${mod} || {
+              ocf_log err "Unable to load target_core_${mod} module";
+              return $OCF_ERR_INSTALLED
+           }
+           ocf_log debug "${OCF_RESOURCE_INSTANCE}: target_core_${mod} module loaded."
+        done
     fi
 
     # lio distinguishes between targets and target portal
