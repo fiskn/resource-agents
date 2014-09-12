@@ -314,13 +314,47 @@ LIOTarget_stop() {
 }
 
 LIOTarget_monitor() {
+    declare -a targets=( $(echo ${OCF_RESKEY_id}) )
+    local index=${#targets[@]}
+    local path
+
     # if we have no configfs entry for the target, it's
-    # definitely stopped
-    [ -d /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id} ] || return $OCF_NOT_RUNNING
+    # definitely stopped.
+    for ids in ${OCF_RESKEY_id}; do
+        [ -d /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids} ] || (( index-- ))
+    done
+    # check if all targets are not here
+    if [ $index -eq 0 ]; then
+         return $OCF_NOT_RUNNING
+    fi
     # if the target is there, but its TPG is not enabled, then
     # we also consider it stopped
-    [ `cat /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/enable` -eq 1 ] || return $OCF_NOT_RUNNING
-    return $OCF_SUCCESS
+    for ids in ${OCF_RESKEY_id}; do
+        path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/enable"
+        if [ -e ${path} ]; then
+            [ `cat /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/enable` -eq 1 ] || (( index-- ))
+        fi
+    done
+    # check if all targets are disabled
+    if [ $index -eq 0]; then
+        return $OCF_NOT_RUNNING
+    fi
+
+    # catch only partly configured target groups
+    if [[ $index -ne ${#targets[@]} ]]; then
+        case $__OCF_ACTION in
+            monitor|start)
+                # only partly running? consider it not running,
+                # so rest gets started
+                return $OCF_NOT_RUNNING
+                ;;
+            stop)
+                # so its still not all stopped, consider it running
+                return $OCF_SUCCESS
+                ;;
+        esac
+    fi
+
 }
 
 LIOTarget_validate() {
