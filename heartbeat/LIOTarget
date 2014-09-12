@@ -144,6 +144,7 @@ LIOTarget_start() {
     local ports
     local configfs_path
     local mod
+    local ids
 
     # Be sure some default dirs are available
     if [ ! -d /var/target/pr ]; then
@@ -229,8 +230,13 @@ LIOTarget_start() {
                 done
             fi
             # no nice lio-utils support for FC targets
-            mkdir -p /sys/kernel/config/target/qla2xxx/${OCF_RESKEY_id}/tpgt_1 \
-                || exit $OCF_ERR_GENERIC
+            for ids in ${OCF_RESKEY_id}; do
+                ocf_run -q mkdir -p /sys/kernel/config/target/qla2xxx/${ids}/tpgt_1 || {
+                    ocf_log err "Unable to initialize FC target ${ids}";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: FC target ${ids} initialized"
+            done
         ;;
     esac
 
@@ -239,21 +245,25 @@ LIOTarget_start() {
     for param in ${OCF_RESKEY_additional_parameters}; do
 	name=${param%=*}
 	value=${param#*=}
-	configfs_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/param/${name}"
-	if [ -e ${configfs_path} ]; then
-	    echo ${value} > ${configfs_path} || exit $OCF_ERR_GENERIC
-	else
-	    ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
-	fi
+        for ids in ${OCF_RESKEY_id}; do
+	    configfs_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/param/${name}"
+	    if [ -e ${configfs_path} ]; then
+	        echo ${value} > ${configfs_path} || exit $OCF_ERR_GENERIC
+	    else
+	        ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
+	    fi
+        done
     done
 
     # lio does per-initiator filtering by default.
     # NO DEMO MODE enabled
     if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-	for initiator in ${OCF_RESKEY_allowed_initiators}; do
-	    ocf_run -q lio_node --addnodeacl ${OCF_RESKEY_id} 1 \
-		${initiator} || exit $OCF_ERR_GENERIC
-	done
+        for ids in ${OCF_RESKEY_id}; do
+	    for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                ocf_run -q lio_node --addnodeacl ${ids} 1 \
+                ${initiator} || exit $OCF_ERR_GENERIC
+	    done
+        done
     fi
     # TODO: add CHAP authentication support when it gets added
     # back into LIOs iscsi target
@@ -264,8 +274,10 @@ LIOTarget_start() {
 
     # Finally, we need to enable the target to allow
     # initiators to connect
-    echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${OCF_RESKEY_id}/tpgt_1/enable \
-        || exit $OCF_ERR_GENERIC
+    for ids in ${OCF_RESKEY_id}; do
+        echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
+            || exit $OCF_ERR_GENERIC
+    done
 
     return $OCF_SUCCESS
 }
