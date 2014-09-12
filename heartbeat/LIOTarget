@@ -295,9 +295,11 @@ LIOTarget_stop() {
 	    qla2xxx)
                 # Unfortunately older targetcli has no meaningfull
                 # return codes
-	        echo -e "/qla2xxx delete ${OCF_RESKEY_id}\nexit\nexit" | targetcli
-		# This can take some seconds,
-                # spin on monitor
+                for ids in ${OCF_RESKEY_id}; do
+	            echo -e "/qla2xxx delete ${ids}\nexit\nexit" | targetcli
+		    # This can take some seconds,
+                    # spin on monitor
+                done
                 rc=$OCF_SUCCESS
                 while [ $rc = $OCF_SUCCESS ]; do
 		    sleep 2
