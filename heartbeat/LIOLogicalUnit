@@ -242,6 +242,41 @@ lio_set_alua_access_state() {
     done
 
     return $OCF_SUCCESS
+
+}
+
+update_master_score() {
+    local score
+    local index
+    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+    score=0
+
+    # We have an array with all TPGs, the left most
+    # one receeives the highest score. TPGs must be named
+    # like the node names in Pacemaker.
+    for (( index = 0; index < ${#tpgs[@]}; index++ )); do
+        if [ "${tpgs[$index]%:*}" = "$(crm_node -n)" ]; then
+            score=$(( ( ${#tpgs[@]} - $index ) * 1000 ));
+            break
+        fi
+    done
+
+    ocf_log debug "Setting master score to $score"
+    if [ $score -gt 0 ]; then
+	set_master_score $score
+    else
+	remove_master_score
+    fi
+}
+
+set_master_score() {
+    # Use quiet mode (-Q) to quench logging. Actual score updates
+    # will get logged by attrd anyway
+    ocf_run ${HA_SBIN_DIR}/crm_master -Q -l reboot -v $1
+}
+
+remove_master_score() {
+    ocf_run ${HA_SBIN_DIR}/crm_master -l reboot -D
 }
 
 LIOLogicalUnit_acls() {
