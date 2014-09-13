@@ -427,8 +427,8 @@ LIOLogicalUnit_reload() {
 LIOLogicalUnit_stop() {
     local target
 
-    remove_master_score
     LIOLogicalUnit_monitor
+    remove_master_score
     if [ $? -eq $OCF_SUCCESS ]; then
         LIOLogicalUnit_acls
         # Delete LUN for all its targets
