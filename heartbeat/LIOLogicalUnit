@@ -346,7 +346,11 @@ LIOLogicalUnit_acls() {
 }
 
 LIOLogicalUnit_start() {
-    LIOLogicalUnit_monitor && return $OCF_SUCCESS
+    LIOLogicalUnit_monitor
+    rc=$?
+    case $rc in
+        $OCF_SUCCESS|$OCF_RUNNING_MASTER) return $rc ;;
+    esac
 
     local lun_path
     local dev_path
@@ -384,15 +388,15 @@ LIOLogicalUnit_start() {
 	        # Initially switch it into standby mode and
                 # only allow implicit state changes.
                 ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpgn%:*} s || exit $OCF_ERR_GENERIC
+                    ${tpg%:*} s || exit $OCF_ERR_GENERIC
                 ocf_run tcm_node --setaluatype=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpg%:*} implict || exit $OCF_ERR_GENERIC
+                    ${tpg%:*} both || exit $OCF_ERR_GENERIC
             fi
             # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
             # for "multi-node targets"
             for target in ${OCF_RESKEY_target_id}; do
                 # Only assign the ALUA TPG for this node
-                if [ "${tpg%:*}" -eq "$(crm_node -n)" ]; then
+                if [ "${tpg%:*}" = "$(crm_node -n)" ]; then
                     lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
                     # Do it manually and not with tcm_node, to also
                     # work with FC
@@ -406,6 +410,7 @@ LIOLogicalUnit_start() {
         LIOLogicalUnit_acls || exit $OCF_ERR_GENERIC
     fi
 
+    ocf_is_ms && update_master_score
     return $OCF_SUCCESS
 }
 
