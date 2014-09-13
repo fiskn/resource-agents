@@ -168,13 +168,19 @@ implicitly using target-side configFS operations.
 </parameters>
 
 <actions>
-<action name="start"        timeout="10" />
-<action name="stop"         timeout="10" />
+<action name="start"        timeout="60" />
+<action name="stop"         timeout="60" />
+<action name="promote"      timeout="60" />
+<action name="demote"       timeout="60" />
+<action name="notify"       timeout="60" />
+<action name="stop"         timeout="120" />
+<action name="monitor"      depth="0" timeout="20" interval="10" />
+<action name="monitor"      depth="0" timeout="20" interval="20" role="Slave" />
+<action name="monitor"      depth="0" timeout="20" interval="10" role="Master" />
 <action name="reload"       timeout="10" />
 <action name="status"       timeout="10" interval="10" depth="0" />
-<action name="monitor"      timeout="10" interval="10" depth="0" />
 <action name="meta-data"    timeout="5" />
-<action name="validate-all"   timeout="10" />
+<action name="validate-all" timeout="10" />
 </actions>
 </resource-agent>
 END
@@ -184,7 +190,7 @@ END
 
 LIOLogicalUnit_usage() {
 	cat <<END
-usage: $0 {start|stop|status|monitor|reload|validate-all|meta-data}
+usage: $0 {start|stop|promote|demote|notify|status|monitor|reload|validate-all|meta-data}
 
 Expects to have a fully populated OCF RA-compliant environment set.
 END
@@ -555,6 +561,9 @@ LIOLogicalUnit_validate
 case $__OCF_ACTION in
 start)		LIOLogicalUnit_start;;
 stop)		LIOLogicalUnit_stop;;
+promote)	LIOLogicalUnit_promote;;
+demote)		LIOLogicalUnit_demote;;
+notify)		LIOLogicalUnit_notify;;
 monitor|status)	LIOLogicalUnit_monitor;;
 reload)		ocf_log info "Reloading..."
 		LIOLogicalUnit_reload
