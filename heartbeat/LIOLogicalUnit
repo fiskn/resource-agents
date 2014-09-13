@@ -510,6 +510,37 @@ LIOLogicalUnit_monitor() {
     return $OCF_NOT_RUNNING
 }
 
+LIOLogicalUnit_demote() {
+	# Keep trying to demote the resource;
+	# wait for the CRM to time us out if this fails
+	while true; do
+		LIOLogicalUnit_monitor
+                rc=$?
+
+		case $rc in
+		$OCF_RUNNING_MASTER)
+                    ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} $(crm_node -n) s || {
+                        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "ALUA: demote successfull, TPG $(crm_node -n) is now standby"
+		    ;;
+		$OCF_NOT_RUNNING)
+	            ocf_log error "Trying to demote a resource that was not started"
+	            break
+	            ;;
+		$OCF_SUCCESS)
+	            ocf_log debug "Demotion successful"
+	            rc=$OCF_SUCCESS
+	            break
+	            ;;
+		esac
+		sleep 3
+	done
+
+	return $rc
+}
+
 LIOLogicalUnit_validate() {
     # Do we have all required variables?
     for var in target_id lun path; do
