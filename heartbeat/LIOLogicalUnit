@@ -444,17 +444,19 @@ LIOLogicalUnit_stop() {
         done
 	ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
     fi
-    
+
     return $OCF_SUCCESS
 }
 
 LIOLogicalUnit_monitor() {
     local cfgfs_path_lun
     local cfgfs_path_core
+    local alua_state
     local target
     local index
 
     cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
+    alua_state=2
     declare -a ids=( $(echo ${OCF_RESKEY_target_id}) )
     index=${#ids[@]}
     # Check all targets
@@ -463,13 +465,6 @@ LIOLogicalUnit_monitor() {
         if [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
            [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ]; then
                 (( index-- ))
-        else
-           # Log the case where either only the lun _or_ the backend
-           # device is available (XOR). We already know not both are valid.
-           ( [ -e ${cfgfs_path_lun} ] && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ] && \
-             ocf_log error "Target: ${target} - Lun ${OCF_RESKEY_lun} configured but backend device iblock_${OCF_RESKEY_lio_iblock} not connected." ) || \
-           ( [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ] && \
-             ocf_log error "Target: ${target} - Backend device iblock_${OCF_RESKEY_lun} configured but lun ${OCF_RESKEY_lun} not connected." ) 
         fi
     done
 
@@ -477,9 +472,22 @@ LIOLogicalUnit_monitor() {
         # The lun seems to be availaddble, also verify/fix its acls
         LIOLogicalUnit_acls || exit $?
 
-        # Now set the ALUA state
+        # Now check the ALUA state
         if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
-            lio_set_alua_access_state
+            alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$(crm_node -n)/alua_access_state)"
+            case $alua_state in
+                0)
+                    update_master_score
+                    return $OCF_RUNNING_MASTER
+                    ;;
+                2)
+                    update_master_score
+                    return $OCF_SUCCESS
+                    ;;
+                *)
+                    return $OCF_FAILED_MASTER
+                    ;;
+           esac
         fi
         return $OCF_SUCCESS
     fi
@@ -489,14 +497,16 @@ LIOLogicalUnit_monitor() {
         case $__OCF_ACTION in
             monitor|start)
                 ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated correctly to all its targets!"
+                remove_master_score
                 exit $OCF_ERR_GENERIC
                 ;;
             stop)
+                remove_master_score
                 return $OCF_SUCCESS
                 ;;
         esac
     fi
-    
+
     return $OCF_NOT_RUNNING
 }
 
