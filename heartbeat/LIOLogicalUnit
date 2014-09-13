@@ -427,6 +427,7 @@ LIOLogicalUnit_reload() {
 LIOLogicalUnit_stop() {
     local target
 
+    remove_master_score
     LIOLogicalUnit_monitor
     if [ $? -eq $OCF_SUCCESS ]; then
         LIOLogicalUnit_acls
