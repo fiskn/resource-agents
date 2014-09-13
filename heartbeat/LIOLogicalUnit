@@ -51,8 +51,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOLogicalUnit" version="0.3">
-<version>0.3</version>
+<resource-agent name="LIOLogicalUnit" version="0.4">
+<version>0.4</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a LIO target. An Logical unit is a subdivision of 
