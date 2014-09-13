@@ -572,6 +572,22 @@ LIOLogicalUnit_demote() {
 	return $rc
 }
 
+LIOLogicalUnit_notify() {
+    local n_type=$OCF_RESKEY_CRM_meta_notify_type
+    local n_op=$OCF_RESKEY_CRM_meta_notify_operation
+
+    : "== DEBUG == slave   = $OCF_RESKEY_CRM_meta_notify_slave_uname"
+    : "== DEBUG == master  = $OCF_RESKEY_CRM_meta_notify_master_uname"
+    : "== DEBUG == start   = $OCF_RESKEY_CRM_meta_notify_start_uname"
+    : "== DEBUG == promote = $OCF_RESKEY_CRM_meta_notify_promote_uname"
+    : "== DEBUG == stop    = $OCF_RESKEY_CRM_meta_notify_stop_uname"
+    : "== DEBUG == demote  = $OCF_RESKEY_CRM_meta_notify_demote_uname"
+
+    LIOLogicalUnit_monitor
+
+    return $OCF_SUCCESS
+}
+
 LIOLogicalUnit_validate() {
     # Do we have all required variables?
     for var in target_id lun path; do
