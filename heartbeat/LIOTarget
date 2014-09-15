@@ -338,7 +338,7 @@ LIOTarget_monitor() {
         fi
     done
     # check if all targets are disabled
-    if [ $index -eq 0]; then
+    if [ $index -eq 0 ]; then
         return $OCF_NOT_RUNNING
     fi
 
