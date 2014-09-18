@@ -196,50 +196,25 @@ Expects to have a fully populated OCF RA-compliant environment set.
 END
 }
 
-lio_set_alua_access_state() {
-    # For this to work, a ping resource for each ALUA) target port group name
-    # has to be defined. The attribute is expected to follow this
-    # naming shema: prefix "alua#" followed by the ALUA target port group name
-    # Examples: alua#fastpath alua#slowpath
-    # The group with the highest ping value is switched to "active/optimized",
-    # the other groups are switched to "unavailable".
-    local tpgn
-    local optimized
-    local value
-    local highest
-    optimized=""
-    value=0
-    highest=0
-    # Get current value for each group
-    for tpgn in ${OCF_RESKEY_lio_alua_tpg}; do
-        value=$(crm_attribute --type status \
-            --node-uname $(crm_node -n) --attr-name alua#${tpgn%:*} \
-            --get-value --quiet 2>/dev/null)
-        # The group with the highest score should be
-        # the optimized path
-        if [[ $value -gt $highest ]]; then
-            highest=$value
-            optimized="${tpgn%:*}"
-            ocf_log debug "ALUA: The highest score is $highest, optimize $optimized"
-        fi
-    done
-    # Switch all paths but the optimized to
-    # standby ALUA access state "s"
-    for tpgn in ${OCF_RESKEY_lio_alua_tpg}; do
-        if [ "${tpgn%:*}" != "${optimized}" ]; then
-            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn%:*} s || {
+update_alua_access_state() {
+    local tpg="$1"
+
+    case $2 in
+        standby)
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpg} s || {
                 ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
                 exit $OCF_ERR_GENERIC
             }
             ocf_log debug "ALUA: $tpgn is not optimized"
-        else
-            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpgn%:*} o || {
+            ;;
+        optimized)
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpg} o || {
                 ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
                 exit $OCF_ERR_GENERIC
             }
-            ocf_log debug "ALUA optimized is: ${optimized}"
-        fi
-    done
+            ocf_log debug "ALUA: ${optimized} is now optimized"
+            ;;
+    esac
 
     return $OCF_SUCCESS
 
@@ -519,7 +494,7 @@ LIOLogicalUnit_promote() {
 
 		case $rc in
 		$OCF_SUCCESS)
-                    ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} $(crm_node -n) o || {
+                    update_alua_access_state $(crm_node -n) standby || {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
                         exit $OCF_ERR_GENERIC
                     }
@@ -550,7 +525,7 @@ LIOLogicalUnit_demote() {
 
 		case $rc in
 		$OCF_RUNNING_MASTER)
-                    ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} $(crm_node -n) s || {
+                    update_alua_access_state $(crm_node -n) standby || {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
                         exit $OCF_ERR_GENERIC
                     }
