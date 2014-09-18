@@ -550,6 +550,8 @@ LIOLogicalUnit_demote() {
 LIOLogicalUnit_notify() {
     local n_type=$OCF_RESKEY_CRM_meta_notify_type
     local n_op=$OCF_RESKEY_CRM_meta_notify_operation
+    local slave=$OCF_RESKEY_CRM_meta_notify_slave_uname
+    local master=$OCF_RESKEY_CRM_meta_notify_master_uname
 
     : "== DEBUG == slave   = $OCF_RESKEY_CRM_meta_notify_slave_uname"
     : "== DEBUG == master  = $OCF_RESKEY_CRM_meta_notify_master_uname"
@@ -558,7 +560,30 @@ LIOLogicalUnit_notify() {
     : "== DEBUG == stop    = $OCF_RESKEY_CRM_meta_notify_stop_uname"
     : "== DEBUG == demote  = $OCF_RESKEY_CRM_meta_notify_demote_uname"
 
-    LIOLogicalUnit_monitor
+    case $n_type/$n_op in
+        post/*mote)
+            # Is this node master or slave for this resource?
+            case $(crm_node -n) in
+                $slave)
+                    # Do we have any master at all?
+                    if [ -n "$master" ]; then
+                        # We are slave: be sure the master TPG is also
+                        # set to optimized (without luns) on this node
+                        update_alua_access_state $master optimized
+                    fi
+                    ;;
+
+                $master)
+                    # Do we have any slave at all?
+                    if [ -n "$slave" ]; then
+                        # We are master: be sure the slave TPG is also
+                        # set to standby (without luns) on this node
+                        update_alua_access_state $slave standby
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
 
     return $OCF_SUCCESS
 }
