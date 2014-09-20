@@ -550,8 +550,11 @@ LIOLogicalUnit_demote() {
 LIOLogicalUnit_notify() {
     local n_type=$OCF_RESKEY_CRM_meta_notify_type
     local n_op=$OCF_RESKEY_CRM_meta_notify_operation
-    local slave=$OCF_RESKEY_CRM_meta_notify_slave_uname
-    local master=$OCF_RESKEY_CRM_meta_notify_master_uname
+    local slave=$OCF_RESKEY_CRM_meta_notify_demote_uname
+    local master=$OCF_RESKEY_CRM_meta_notify_promote_uname
+    local stopped=$OCF_RESKEY_CRM_meta_notify_stop_uname
+    local node
+    local clone
 
     : "== DEBUG == slave   = $OCF_RESKEY_CRM_meta_notify_slave_uname"
     : "== DEBUG == master  = $OCF_RESKEY_CRM_meta_notify_master_uname"
@@ -560,28 +563,39 @@ LIOLogicalUnit_notify() {
     : "== DEBUG == stop    = $OCF_RESKEY_CRM_meta_notify_stop_uname"
     : "== DEBUG == demote  = $OCF_RESKEY_CRM_meta_notify_demote_uname"
 
-    case $n_type/$n_op in
-        post/*mote)
+    case ${n_type}/${n_op} in
+        post/*mote|post/start)
             # Is this node master or slave for this resource?
-            case $(crm_node -n) in
-                $slave)
-                    # Do we have any master at all?
-                    if [ -n "$master" ]; then
-                        # We are slave: be sure the master TPG is also
-                        # set to optimized (without luns) on this node
-                        update_alua_access_state $master optimized
-                    fi
-                    ;;
-
-                $master)
-                    # Do we have any slave at all?
-                    if [ -n "$slave" ]; then
-                        # We are master: be sure the slave TPG is also
-                        # set to standby (without luns) on this node
-                        update_alua_access_state $slave standby
-                    fi
-                    ;;
-            esac
+            for node in $slave; do
+                # Do we have any master(s) at all?
+                if [ -n "$master" ] && [ "$node" = "$HOSTNAME" ]; then
+                    # We are slave: be sure the master(s) TPG is also
+                    # set to optimized (without luns) on this node
+                    for clone in $master; do
+                        update_alua_access_state $clone optimized
+                    done
+                fi
+            done
+            for node in $master; do
+                # Do we have any slave(s) at all?
+                if [ -n "$slave" ] && [ "$node" = "$HOSTNAME" ]; then
+                    # We are master: be sure the slave(s) TPG is also
+                    # set to standby (without luns) on this node
+                    for clone in $slave; do
+                        update_alua_access_state $clone standby
+                    done
+                fi
+            done
+            ;;
+        post/stop)
+            # So some node(s) stopped the resource, is it me?
+            for node in $stopped; do
+                if [ "$node" != "$HOSTNAME" ]; then
+                    # Another node stopped the resource,
+                    # its TPGs are definitely standby
+                    update_alua_access_state $node standby
+                fi
+            done
             ;;
     esac
 
@@ -668,6 +682,9 @@ LIOLogicalUnit_validate() {
 		;;
 	esac
     fi
+
+    # We need the nodename several times.
+    HOSTNAME=$(crm_node -n)
 
     return $OCF_SUCCESS
 }
