@@ -230,7 +230,7 @@ update_master_score() {
     # one receeives the highest score. TPGs must be named
     # like the node names in Pacemaker.
     for (( index = 0; index < ${#tpgs[@]}; index++ )); do
-        if [ "${tpgs[$index]%:*}" = "$(crm_node -n)" ]; then
+        if [ "${tpgs[$index]%:*}" = "$HOSTNAME" ]; then
             score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
             break
         fi
@@ -371,7 +371,7 @@ LIOLogicalUnit_start() {
             # for "multi-node targets"
             for target in ${OCF_RESKEY_target_id}; do
                 # Only assign the ALUA TPG for this node
-                if [ "${tpg%:*}" = "$(crm_node -n)" ]; then
+                if [ "${tpg%:*}" = "$HOSTNAME" ]; then
                     lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
                     # Do it manually and not with tcm_node, to also
                     # work with FC
@@ -449,7 +449,7 @@ LIOLogicalUnit_monitor() {
 
         # Now check the ALUA state
         if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
-            alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$(crm_node -n)/alua_access_state)"
+            alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$HOSTNAME/alua_access_state)"
             case $alua_state in
                 0)
                     update_master_score
@@ -494,11 +494,11 @@ LIOLogicalUnit_promote() {
 
 		case $rc in
 		$OCF_SUCCESS)
-                    update_alua_access_state $(crm_node -n) optimized || {
+                    update_alua_access_state $HOSTNAME optimized || {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
                         exit $OCF_ERR_GENERIC
                     }
-                    ocf_log debug "ALUA: promote successfull, TPG $(crm_node -n) is now optimized"
+                    ocf_log debug "ALUA: promote successfull, TPG $HOSTNAME is now optimized"
 		    ;;
 		$OCF_NOT_RUNNING)
 	            ocf_log error "Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
@@ -525,11 +525,11 @@ LIOLogicalUnit_demote() {
 
 		case $rc in
 		$OCF_RUNNING_MASTER)
-                    update_alua_access_state $(crm_node -n) standby || {
+                    update_alua_access_state $HOSTNAME standby || {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
                         exit $OCF_ERR_GENERIC
                     }
-                    ocf_log debug "ALUA: demote successfull, TPG $(crm_node -n) is now standby"
+                    ocf_log debug "ALUA: demote successfull, TPG $HOSTNAME is now standby"
 		    ;;
 		$OCF_NOT_RUNNING)
 	            ocf_log error "Trying to demote a resource that was not started"
