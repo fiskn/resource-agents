@@ -494,7 +494,7 @@ LIOLogicalUnit_promote() {
 
 		case $rc in
 		$OCF_SUCCESS)
-                    update_alua_access_state $(crm_node -n) standby || {
+                    update_alua_access_state $(crm_node -n) optimized || {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
                         exit $OCF_ERR_GENERIC
                     }
