@@ -231,7 +231,7 @@ update_master_score() {
     # like the node names in Pacemaker.
     for (( index = 0; index < ${#tpgs[@]}; index++ )); do
         if [ "${tpgs[$index]%:*}" = "$(crm_node -n)" ]; then
-            score=$(( ( ${#tpgs[@]} - $index ) * 1000 ));
+            score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
             break
         fi
     done
