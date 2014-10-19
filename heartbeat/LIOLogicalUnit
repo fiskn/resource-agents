@@ -73,8 +73,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="LIOLogicalUnit" version="0.4">
-<version>0.4</version>
+<resource-agent name="LIOLogicalUnit" version="0.5">
+<version>0.5</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a LIO target. An Logical unit is a subdivision of 
@@ -209,7 +209,6 @@ END
 }
 
 #######################################################################
-
 LIOLogicalUnit_usage() {
 	cat <<END
 usage: $0 {start|stop|promote|demote|notify|status|monitor|reload|validate-all|meta-data}
@@ -574,49 +573,48 @@ LIOLogicalUnit_demote() {
 LIOLogicalUnit_notify() {
     local n_type=$OCF_RESKEY_CRM_meta_notify_type
     local n_op=$OCF_RESKEY_CRM_meta_notify_operation
-    local slave=$OCF_RESKEY_CRM_meta_notify_demote_uname
-    local master=$OCF_RESKEY_CRM_meta_notify_promote_uname
-    local stopped=$OCF_RESKEY_CRM_meta_notify_stop_uname
+    local demoteit=$OCF_RESKEY_CRM_meta_notify_demote_uname
+    local promoteit=$OCF_RESKEY_CRM_meta_notify_promote_uname
+    local stopit=$OCF_RESKEY_CRM_meta_notify_stop_uname
+    local startit=$OCF_RESKEY_CRM_meta_notify_start_uname
+    local master=$OCF_RESKEY_CRM_meta_notify_master_uname
+    local slave=$OCF_RESKEY_CRM_meta_notify_slave_uname
     local node
-    local clone
+    local instance
 
-    : "== DEBUG == slave   = $OCF_RESKEY_CRM_meta_notify_slave_uname"
-    : "== DEBUG == master  = $OCF_RESKEY_CRM_meta_notify_master_uname"
-    : "== DEBUG == start   = $OCF_RESKEY_CRM_meta_notify_start_uname"
-    : "== DEBUG == promote = $OCF_RESKEY_CRM_meta_notify_promote_uname"
-    : "== DEBUG == stop    = $OCF_RESKEY_CRM_meta_notify_stop_uname"
-    : "== DEBUG == demote  = $OCF_RESKEY_CRM_meta_notify_demote_uname"
-
-    case ${n_type}/${n_op} in
-        post/*mote|post/start)
-            # Is this node master or slave for this resource?
-            for node in $slave; do
-                # Do we have any master(s) at all?
-                if [ -n "$master" ] && [ "$node" = "$HOSTNAME" ]; then
+    case $n_type/$n_op in
+        post/start)
+            # Switch all new slave instances TPG to standby
+            for node in $startit; do
+                # Do we have any master(s) at all and did the start happened locally?
+                if [ "$node" = "$HOSTNAME" ]; then
                     # We are slave: be sure the master(s) TPG is also
-                    # set to optimized (without luns) on this node
-                    for clone in $master; do
-                        update_alua_access_state $clone optimized
-                    done
-                fi
-            done
-            for node in $master; do
-                # Do we have any slave(s) at all?
-                if [ -n "$slave" ] && [ "$node" = "$HOSTNAME" ]; then
-                    # We are master: be sure the slave(s) TPG is also
-                    # set to standby (without luns) on this node
-                    for clone in $slave; do
-                        update_alua_access_state $clone standby
+                    # set to optimized (without luns) on this node.
+                    # We rely on default standby state on creation.
+                    for instance in $master; do
+                         update_alua_access_state $instance optimized
                     done
                 fi
             done
             ;;
+        post/promote)
+            for node in $promoteit; do
+                # Switch all new master instances TPG to optimized.
+                update_alua_access_state $node optimized
+            done
+            ;;
+        post/demote)
+            for node in $demoteit; do
+                # Switch all new slave instances TPG to standby
+                update_alua_access_state $node standby
+            done
+            ;;
         post/stop)
-            # So some node(s) stopped the resource, is it me?
-            for node in $stopped; do
+            # So some node(s) has/have inactive resources, is it me?
+            for node in $stopit; do
                 if [ "$node" != "$HOSTNAME" ]; then
                     # Another node stopped the resource,
-                    # its TPGs are definitely standby
+                    # its TPGs are definitely standby.
                     update_alua_access_state $node standby
                 fi
             done
