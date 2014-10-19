@@ -252,7 +252,7 @@ update_master_score() {
     # one receeives the highest score. TPGs must be named
     # like the node names in Pacemaker.
     for (( index = 0; index < ${#tpgs[@]}; index++ )); do
-        if [ "${tpgs[$index]%:*}" = "$HOSTNAME" ]; then
+        if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
             score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
             break
         fi
@@ -353,6 +353,8 @@ LIOLogicalUnit_start() {
     local dev_path
     local target
     local tpg
+    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+
     dev_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}"
 
     # For lio, we first have to create a target device, then
@@ -375,29 +377,29 @@ LIOLogicalUnit_start() {
     # For ALUA, create the target port group name for this lun
     # and assign the group to the lun
     if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
-        for tpg in ${OCF_RESKEY_lio_alua_tpg}; do
+        for (( index = 0; index < ${#tpgs[@]}; index++ )); do
             lun_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua"
             # Only add the ALUATPG if it does not already exist,
             # and always set a specific TPG id
-            if [ ! -d ${lun_path}/${tpg%:*} ]; then
+            if [ ! -d ${lun_path}/${tpgs[$index]} ]; then
                 ocf_run tcm_node --addtgptgpwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
-                    ${tpg%:*} ${tpg#*:} || exit $OCF_ERR_GENERIC
+                    ${tpgs[$index]} $(( $index + 1 )) || exit $OCF_ERR_GENERIC
 	        # Initially switch it into standby mode and
                 # only allow implicit state changes.
                 ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpg%:*} s || exit $OCF_ERR_GENERIC
+                    ${tpgs[$index]} s || exit $OCF_ERR_GENERIC
                 ocf_run tcm_node --setaluatype=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpg%:*} both || exit $OCF_ERR_GENERIC
+                    ${tpgs[$index]} both || exit $OCF_ERR_GENERIC
             fi
             # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
             # for "multi-node targets"
             for target in ${OCF_RESKEY_target_id}; do
                 # Only assign the ALUA TPG for this node
-                if [ "${tpg%:*}" = "$HOSTNAME" ]; then
+                if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
                     lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
                     # Do it manually and not with tcm_node, to also
                     # work with FC
-                    echo ${tpg%:*} > ${lun_path} || exit $OCF_ERR_GENERIC
+                    echo ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
                 fi
             done
         done
