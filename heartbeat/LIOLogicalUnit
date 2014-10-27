@@ -280,6 +280,8 @@ LIOLogicalUnit_acls() {
     local acls_del
     local acl_full_path
     local acls_path
+    local acl_node
+    local acl
     local target
 
     # Adjust acls for all targets this LUN is associated to
@@ -317,16 +319,17 @@ LIOLogicalUnit_acls() {
         # not allowed. On "stop" all acls are deleted for this LUN.
         ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}"
         for acl in ${acls_del[@]}; do
-            if [[ -d $acl ]]; then
+            if [[ -d ${acl} ]]; then
                 # Removing the lun subdir, has the same effect
                 # as lio_node --dellunacl.
-                rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl}  || exit $OCF_ERR_GENERIC
+                rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl} || exit $OCF_ERR_GENERIC
             fi
             # Delete node-acl if no more lun assignments are remaining
-            acl_node="${acl%/*}"
-            if ! ls -dU ${acl_node}/lun_* >/dev/null 2>&1 ; then
+            acl_node=${acl%/*}
+            if [[ ! $(ls -d ${acl_node}/lun_* 2>/dev/null) ]]; then
                 ocf_log debug "No more lun acls for initiator ${acl_node##*/}, delete node acl"
-                rmdir ${acl_node}  || exit $OCF_ERR_GENERIC
+                rmdir ${acl_node}
+                [[ -d ${acl_node} ]] && exit $OCF_ERR_GENERIC
             fi
         done
     done
