@@ -163,7 +163,7 @@ LIOTarget_start() {
     fi
 
     # Load core modules and configfs if needed
-    if [ ! -d /sys/kernel/config ]; then
+    if ! mountpoint -q /sys/kernel/config ; then
 	ocf_run -q modprobe -s configfs || {
            ocf_log err "Unable to load configfs module";
            return $OCF_ERR_INSTALLED
@@ -418,6 +418,7 @@ LIOTarget_validate() {
 		check_binary tcm_node
 		check_binary lio_node
 		check_binary targetcli
+                check_binary mountpoint
 		;;
 	esac
     fi
