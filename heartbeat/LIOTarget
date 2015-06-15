@@ -224,11 +224,11 @@ LIOTarget_start() {
                       return $OCF_ERR_INSTALLED
                    }
                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: tcm_${mod} module loaded."
-                   ocf_run -q mkdir -p /sys/kernel/config/target/${mods} || {
-                      ocf_log err "Unable to create $mods target configfs entry";
+                   ocf_run -q mkdir -p /sys/kernel/config/target/${mod} || {
+                      ocf_log err "Unable to create $mod target configfs entry";
                       return $OCF_ERR_INSTALLED
                    }
-                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: $mods configfs entry created"
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: $mod configfs entry created"
                 done
             fi
             # no nice lio-utils support for FC targets
