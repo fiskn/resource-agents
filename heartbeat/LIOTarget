@@ -276,7 +276,8 @@ LIOTarget_start() {
     # Finally, we need to enable the target to allow
     # initiators to connect
     for ids in ${OCF_RESKEY_id}; do
-        echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
+        grep -q "1" /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
+            || echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
             || exit $OCF_ERR_GENERIC
     done
 
