@@ -420,6 +420,8 @@ LIOLogicalUnit_reload() {
 
 LIOLogicalUnit_stop() {
     local target
+    # If our backing device (or file) doesn't even exist, we're not running
+    [ -e ${OCF_RESKEY_path} ] || return $OCF_NOT_RUNNING
 
     LIOLogicalUnit_monitor
     remove_master_score
