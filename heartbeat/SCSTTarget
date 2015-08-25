@@ -1,0 +1,458 @@
+#!/bin/bash
+#
+# SCSTTarget
+#
+# Description: Exports and manages SCST targets.
+#
+# Author:      Andreas Kurz
+#
+# License:     GNU General Public License (GPL)
+#
+# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+#
+# This resource agent is derived from the iSCSITarget resource
+# agent, which itself is made available to the public under the
+# following copyright:
+#
+# (c) 2009-2010 Florian Haas, Dejan Muhamedagic,
+#               and Linux-HA contributors
+#
+# See usage() function below for more details ...
+#
+#######################################################################
+# Initialization:
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+# Defaults
+# Set the iSCSI fabric as default 
+OCF_RESKEY_fabric_default="iscsi"
+: ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
+
+# Listen on 0.0.0.0:3260 by default
+OCF_RESKEY_iscsi_portals_default="0.0.0.0:3260"
+: ${OCF_RESKEY_portals=${OCF_RESKEY_iscsi_portals_default}}
+
+# Lockfile, used for selecting a target ID
+LOCKFILE=${HA_RSCTMP}/SCSTTarget-${OCF_RESKEY_fabric}.lock
+
+#######################################################################
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="SCSTTarget" version="0.0.1">
+<version>0.0.1</version>
+
+<longdesc lang="en">
+Manages SCST targets. A target is a daemon that speaks
+ a specific protocol and exports a collection of Logical Units (LUs) .
+</longdesc>
+<shortdesc lang="en">SCST target export agent</shortdesc>
+
+<parameters>
+<parameter name="fabric" required="0" unique="0">
+<longdesc lang="en">
+The SCST target supports several fabric types. Must be one of "iscsi" or
+"qla2xxx". If unspecified, "iscsi" is used.
+</longdesc>
+<shortdesc lang="en">Specifies the type of fabric</shortdesc>
+<content type="string" default="${OCF_RESKEY_fabric_default}"/>
+</parameter>
+
+<parameter name="id" required="1" unique="1">
+<longdesc lang="en">
+ISCSI targets use an iSCSI Qualified Name (IQN). Should follow the conventional
+"iqn.yyyy-mm.&lt;reversed domain name&gt;[:identifier]" syntax.
+FC targets use a World Wide Port Name (WWPN). Each World Wide Name (WWN)
+ is an 8 byte number derived from an IEEE OUI and vendor-supplied information.
+For FC targets it is supported to add a white-space separated list of WWPNs
+(e.g. all ports on a multi-link HBA)
+</longdesc>
+<shortdesc lang="en">Target id (IQN or WWPN)</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_portals" required="0" unique="0">
+<longdesc lang="en">
+White space separated list of iSCSI network portal addresses.
+If unset, the default is to create one portal that listens on
+${OCF_RESKEY_iscsi_portals_default}.
+</longdesc>
+<shortdesc lang="en">iSCSI portal addresses</shortdesc>
+<content type="string" default="${OCF_RESKEY_iscsi_portals_default}"/>
+</parameter>
+
+<parameter name="allowed_initiators" required="0" unique="0">
+<longdesc lang="en">
+Allowed initiators. A space-separated list of initiators allowed to
+connect to this target. Initiators may be listed in any syntax
+the target implementation allows. If this parameter is empty or
+not set, access to this target will not be allowed from any initiator.
+</longdesc>
+<shortdesc lang="en">List of initiators allowed to connect
+to this target</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
+<parameter name="additional_parameters" required="0" unique="0">
+<longdesc lang="en">
+Additional target parameters. A space-separated list of "name=value"
+pairs which will be passed through to the SCST targets management
+interface. The supported parameters are implementation
+dependent. Neither the name nor the value may contain whitespace.
+</longdesc>
+<shortdesc lang="en">List of SCST target parameters</shortdesc>
+<content type="string" />
+</parameter>
+
+</parameters>
+
+<actions>
+<action name="start"        timeout="10" />
+<action name="stop"         timeout="10" />
+<action name="status"       timeout="10" interval="10" depth="0" />
+<action name="monitor"      timeout="10" interval="10" depth="0" />
+<action name="meta-data"    timeout="5" />
+<action name="validate-all"   timeout="10" />
+</actions>
+</resource-agent>
+END
+}
+
+#######################################################################
+
+SCSTTarget_usage() {
+	cat <<END
+usage: $0 {start|stop|status|monitor|validate-all|meta-data}
+
+Expects to have a fully populated OCF RA-compliant environment set.
+END
+}
+
+SCSTTarget_start() {
+    SCSTTarget_monitor
+    if [ $? =  $OCF_SUCCESS ]; then
+	return $OCF_SUCCESS
+    fi
+
+    local param
+    local name
+    local value
+    local initiator
+    local portal
+    local ports
+    local configfs_path
+    local mod
+    local ids
+
+    # Be sure some default dirs are available
+    if [ ! -d /var/target/pr ]; then
+	mkdir -p /var/target/pr || {
+           ocf_log err "Unable to create /var/target/pr";
+           return $OCF_ERR_INSTALLED
+        }
+    fi
+    if [ ! -d /var/target/alua ]; then
+	mkdir -p /var/target/alua || {
+           ocf_log err "Unable to create /var/target/alua";
+           return $OCF_ERR_INSTALLED
+        }
+    fi
+
+    # Load core modules and configfs if needed
+    if ! mountpoint -q /sys/kernel/config ; then
+	ocf_run -q modprobe -s configfs || {
+           ocf_log err "Unable to load configfs module";
+           return $OCF_ERR_INSTALLED
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: configfs module loaded"
+	ocf_run -q mount -t configfs configfs /sys/kernel/config || {
+           ocf_log err "Unable to mount configfs on /sys/kernel/config";
+           return $OCF_ERR_INSTALLED
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: configfs mounted on /sys/kernel/config"
+    fi
+    if [ ! -d /sys/kernel/config/target ]; then
+        for mod in mod iblock pscsi file ; do
+           ocf_run -q modprobe -s  target_core_${mod} || {
+              ocf_log err "Unable to load target_core_${mod} module";
+              return $OCF_ERR_INSTALLED
+           }
+           ocf_log debug "${OCF_RESOURCE_INSTANCE}: target_core_${mod} module loaded."
+        done
+    fi
+
+    # lio distinguishes between targets and target portal
+    # groups (TPGs). We will always create one TPG, with the
+    # number 1. In lio, creating a network portal
+    # automatically creates the corresponding target if it
+    # doesn't already exist.
+    case ${OCF_RESKEY_fabric} in
+        iscsi)
+            # Initiate the fabric if needed
+            if [ ! -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]; then
+                ocf_run -q modprobe -s  iscsi_target_mod || {
+                   ocf_log err "Unable to load iscsi_target_mod  module";
+                   return $OCF_ERR_INSTALLED
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi_target_mod module loaded."
+                ocf_run -q mkdir -p /sys/kernel/config/target/iscsi || {
+                   ocf_log err "Unable to create iscsi target configfs entry";
+                   return $OCF_ERR_INSTALLED
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi configfs entry created"
+                ocf_run -q echo -n 0 > /sys/kernel/config/target/iscsi/discovery_auth/enforce_discovery_auth || {
+                   ocf_log err "Unable to disable enforce of iSCSI Discovery authentication";
+                   return $OCF_ERR_INSTALLED
+                }
+            fi
+            ports=${OCF_RESKEY_iscsi_portals}
+            for portal in ${ports}; do
+              ocf_run -q lio_node --addnp ${OCF_RESKEY_id} 1 \
+                  ${portal} || exit $OCF_ERR_GENERIC
+            done
+        ;;
+        qla2xxx)
+            # Initiate the fabric if needed
+            if [ ! -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]; then
+                for mod in fc qla2xxx; do
+                   ocf_run -q modprobe -s  tcm_${mod} || {
+                      ocf_log err "Unable to load tcm_${mod} module";
+                      return $OCF_ERR_INSTALLED
+                   }
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: tcm_${mod} module loaded."
+                   ocf_run -q mkdir -p /sys/kernel/config/target/${mod} || {
+                      ocf_log err "Unable to create $mod target configfs entry";
+                      return $OCF_ERR_INSTALLED
+                   }
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: $mod configfs entry created"
+                done
+            fi
+            # no nice lio-utils support for FC targets
+            for ids in ${OCF_RESKEY_id}; do
+                ocf_run -q mkdir -p /sys/kernel/config/target/qla2xxx/${ids}/tpgt_1 || {
+                    ocf_log err "Unable to initialize FC target ${ids}";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: FC target ${ids} initialized"
+            done
+        ;;
+    esac
+
+    # in lio, we can set target parameters by manipulating
+    # the appropriate configfs entries
+    for param in ${OCF_RESKEY_additional_parameters}; do
+	name=${param%=*}
+	value=${param#*=}
+        for ids in ${OCF_RESKEY_id}; do
+	    configfs_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/param/${name}"
+	    if [ -e ${configfs_path} ]; then
+	        echo ${value} > ${configfs_path} || exit $OCF_ERR_GENERIC
+	    else
+	        ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
+	    fi
+        done
+    done
+
+    # lio does per-initiator filtering by default.
+    # NO DEMO MODE enabled
+    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+        for ids in ${OCF_RESKEY_id}; do
+	    for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                ocf_run -q lio_node --addnodeacl ${ids} 1 \
+                ${initiator} || exit $OCF_ERR_GENERIC
+	    done
+        done
+    fi
+    # TODO: add CHAP authentication support when it gets added
+    # back into SCSTs iscsi target
+    if [ "${OCF_RESKEY_fabric}" = "iscsi" ]; then
+        ocf_run -q  lio_node --disableauth ${OCF_RESKEY_id} 1 || exit $OCF_ERR_GENERIC
+    fi 
+
+    # Finally, we need to enable the target to allow
+    # initiators to connect
+    for ids in ${OCF_RESKEY_id}; do
+        grep -q "1" /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
+            || echo 1 > /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/tpgt_1/enable \
+            || exit $OCF_ERR_GENERIC
+    done
+
+    return $OCF_SUCCESS
+}
+
+SCSTTarget_stop() {
+    local rc
+    SCSTTarget_monitor
+    if [ $? =  $OCF_SUCCESS ]; then
+	case $OCF_RESKEY_fabric in
+	    iscsi)
+		# In lio, removing a target automatically removes all
+		# associated TPGs, network portals, and LUNs.
+		ocf_run -q lio_node --deliqn=${OCF_RESKEY_id} || exit $OCF_ERR_GENERIC
+		;;
+	    qla2xxx)
+                # Unfortunately older targetcli has no meaningfull
+                # return codes
+                for ids in ${OCF_RESKEY_id}; do
+	            echo -e "/qla2xxx delete ${ids}\nexit\nexit" | targetcli
+		    # This can take some seconds,
+                    # spin on monitor
+                done
+                rc=$OCF_SUCCESS
+                while [ $rc = $OCF_SUCCESS ]; do
+		    sleep 2
+                    SCSTTarget_monitor
+		    rc=$?
+                done
+		;;
+	esac
+    fi
+
+    return $OCF_SUCCESS
+}
+
+SCSTTarget_monitor() {
+    declare -a targets=( $(echo ${OCF_RESKEY_id}) )
+    local index=${#targets[@]}
+    local path
+
+    # if we have no configfs entry for the target, it's
+    # definitely stopped.
+    for ids in ${OCF_RESKEY_id}; do
+        [ -d /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids} ] || (( index-- ))
+    done
+    # check if all targets are not here
+    if [ $index -eq 0 ]; then
+         return $OCF_NOT_RUNNING
+    fi
+    # if the target is there, but its TPG is not enabled, then
+    # we also consider it stopped
+    for ids in ${OCF_RESKEY_id}; do
+        path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/enable"
+        if [ -e ${path} ]; then
+            [ `cat /sys/kernel/config/target/${OCF_RESKEY_fabric}/${ids}/enable` -eq 1 ] || (( index-- ))
+        fi
+    done
+    # check if all targets are disabled
+    if [ $index -eq 0 ]; then
+        return $OCF_NOT_RUNNING
+    fi
+
+    # catch only partly configured target groups
+    if [[ $index -ne ${#targets[@]} ]]; then
+        case $__OCF_ACTION in
+            monitor|start)
+                # only partly running? consider it not running,
+                # so rest gets started
+                return $OCF_NOT_RUNNING
+                ;;
+            stop)
+                # so its still not all stopped, consider it running
+                return $OCF_SUCCESS
+                ;;
+        esac
+    fi
+
+}
+
+SCSTTarget_validate() {
+    # Do we have all required variables?
+    local required_vars
+    case $OCF_RESKEY_fabric in
+	iscsi|qla2xxx)
+	    required_vars="id"
+	;;
+    esac
+    for var in ${required_vars}; do
+	param="OCF_RESKEY_${var}"
+	if [ -z "${!param}" ]; then
+	    ocf_log error "Missing resource parameter \"$var\"!"
+	    exit $OCF_ERR_CONFIGURED
+	fi
+    done
+
+    # Is the configured implementation supported?
+    case "$OCF_RESKEY_fabric" in
+	"iscsi"|"qla2xxx")
+	    ;;
+	*)
+	    ocf_log error "Unsupported SCST fabric type \"$OCF_RESKEY_implementation\"!"
+	    exit $OCF_ERR_CONFIGURED
+	    ;;
+    esac
+
+    # Do we have any configuration parameters that the current
+    # implementation does not support?
+    local unsupported_params
+    local var
+    local envar
+    case $OCF_RESKEY_fabric in
+	iscsi|qla2xxx)
+	    # TODO: Remove incoming_username and incoming_password
+	    # from this check when SCST 3.0 gets CHAP authentication
+	    unsupported_params="tid incoming_username incoming_password"
+	    ;;
+    esac
+    for var in ${unsupported_params}; do
+	envar=OCF_RESKEY_${var}
+	defvar=OCF_RESKEY_${var}_default
+	if [ -n "${!envar}" ]; then
+            if  [[ "${!envar}" != "${!defvar}" ]];then
+                    case "$__OCF_ACTION" in
+                        start|validate-all)
+                          ocf_log warn "Configuration parameter \"${var}\"" \
+                            "is not supported by by the \"${OCF_RESKEY_fabric}\" fabric" \
+                            "and will be ignored." ;;
+                    esac
+            fi
+	fi
+    done
+
+    if ! ocf_is_probe; then
+        # Do we have all required binaries?
+	case $OCF_RESKEY_fabric in
+	    iscsi|qla2xxx)
+		check_binary tcm_node
+		check_binary lio_node
+		check_binary targetcli
+                check_binary mountpoint
+		;;
+	esac
+    fi
+
+    return $OCF_SUCCESS
+}
+
+
+case $1 in
+  meta-data)
+	meta_data
+	exit $OCF_SUCCESS
+	;;
+  usage|help)
+	SCSTTarget_usage
+	exit $OCF_SUCCESS
+	;;
+esac
+
+# Everything except usage and meta-data must pass the validate test
+SCSTTarget_validate
+
+case $__OCF_ACTION in
+start)		SCSTTarget_start;;
+stop)		SCSTTarget_stop;;
+monitor|status)	SCSTTarget_monitor;;
+reload)		ocf_log info "Reloading..."
+	        SCSTTarget_start
+		;;
+validate-all)	;;
+*)		SCSTTarget_usage
+		exit $OCF_ERR_UNIMPLEMENTED
+		;;
+esac
+rc=$?
+ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
+exit $rc
