@@ -1,0 +1,744 @@
+#!/bin/bash
+#
+# SCSTLogicalUnit
+#
+# Description: Resource Agent for highly available SCSTLogicalUnits.
+#              Requires installed SCST kernel module, utilities and
+#              a running SCST target. 
+#
+# Author:      Andreas Kurz
+#
+# License:     GNU General Public License (GPL)
+#
+# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+#
+# This resource agent is derived from the iSCSITarget resource
+# agent, which itself is made available to the public under the
+# following copyright:
+#
+# (c) 2009-2010 Florian Haas, Dejan Muhamedagic,
+#               and Linux-HA contributors
+#
+# See usage() function below for more details ...
+#
+#######################################################################
+# Initialization:
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+# Defaults
+# Set the iSCSI fabric as default 
+OCF_RESKEY_fabric_default="iscsi"
+: ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
+
+
+# Use a SCSI SN that is unique across the cluster,
+# and persistent in the event of resource migration.
+# To have a reasonably unique default SCSI SN, use the first 8 bytes
+# of an MD5 hash of of $OCF_RESOURCE_INSTANCE
+sn=`echo -n "${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
+OCF_RESKEY_scsi_sn_default=${sn:0:8}
+: ${OCF_RESKEY_scsi_sn=${OCF_RESKEY_scsi_sn_default}}
+
+# for debugging this RA
+DEBUG_LOG_DIR=/tmp/SCSTLogicalUnit.ocf.ra.debug
+DEBUG_LOG=$DEBUG_LOG_DIR/log
+USE_DEBUG_LOG=false
+ls_stat_is_dir_0700_root() {
+    set -- $(command ls -ldn "$1" 2>/dev/null);
+    [[ $1/$3 = drwx?-??-?/0 ]]
+}
+# try to avoid symlink vuln.
+if ls_stat_is_dir_0700_root $DEBUG_LOG_DIR &&
+    [[ -w "$DEBUG_LOG" && ! -L "$DEBUG_LOG" ]]
+then
+    USE_DEBUG_LOG=true
+    exec 9>>"$DEBUG_LOG"
+    date >&9
+    echo "$*" >&9
+    env | grep OCF_ | sort >&9
+else
+    exec 9>/dev/null
+fi
+# end of debugging aid
+
+#######################################################################
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="SCSTLogicalUnit" version="0.0.1">
+<version>0.0.1</version>
+
+<longdesc lang="en">
+Manages a Logical Unit for a SCST target. A Logical unit is a subdivision of 
+a Target, exported via a daemon that speaks a specific protocol.
+</longdesc>
+<shortdesc lang="en">Manages Logical Units (LUs) for SCST targets</shortdesc>
+
+<parameters>
+<parameter name="fabric" required="0" unique="0">
+<longdesc lang="en">
+The SCST target supports several fabric types. Must be one of "iscsi" or
+"qla2xxx". If unspecified, "iscsi" is used.
+</longdesc>
+<shortdesc lang="en">The type of fabric</shortdesc>
+<content type="string" default="${OCF_RESKEY_fabric_default}"/>
+</parameter>
+
+<parameter name="target_id" required="1" unique="0">
+<longdesc lang="en">
+A white-space separated list of targets this Logical Unit belongs to. 
+For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
+Fibre Channel (qla2xxx) targets use a World Wide Name (WWN) for
+identification.
+</longdesc>
+<shortdesc lang="en">Target identifier</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="lun" required="1" unique="0">
+<longdesc lang="en">
+The Logical Unit number (LUN) exposed to initiators.
+</longdesc>
+<shortdesc lang="en">Logical Unit number (LUN)</shortdesc>
+<content type="integer" />
+</parameter>
+
+<parameter name="path" required="1" unique="0">
+<longdesc lang="en">
+The path to the block device exposed. Some fabrics allow this
+to be a regular file, too.
+</longdesc>
+<shortdesc lang="en">Block device (or file) path</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="scsi_sn" required="0" unique="1">
+<longdesc lang="en">
+The SCSI serial number to be configured for this Logical Unit.
+The default is a hash of the resource name, truncated to 8 bytes.
+</longdesc>
+<shortdesc lang="en">SCSI serial number</shortdesc>
+<content type="string" default="${OCF_RESKEY_scsi_sn_default}"/>
+</parameter>
+
+<parameter name="product_id" required="0" unique="0">
+<longdesc lang="en">
+The SCSI product ID to be configured for this Logical Unit.
+</longdesc>
+<shortdesc lang="en">SCSI product ID</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="additional_parameters" required="0" unique="0">
+<longdesc lang="en">
+Additional LU parameters. A space-separated list of "name=value" pairs
+which will be passed through to the targets management
+interface. The supported parameters are fabric
+dependent. Neither the name nor the value may contain whitespace.
+</longdesc>
+<shortdesc lang="en">List of LU parameters</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="allowed_initiators" required="0" unique="0">
+<longdesc lang="en">
+Allowed initiators. A space-separated list of initiators allowed to
+connect to this lun. Initiators may be listed in any syntax
+the target fabric allows. If this parameter is empty or
+not set, access to this lun will not be allowed from any initiator,
+if target is not in demo mode.
+</longdesc>
+<shortdesc lang="en">List of initiators allowed to connect
+to this lun.</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
+<parameter name="lio_iblock" required="0" unique="0">
+<longdesc lang="en">
+SCST iblock device name, a number starting from 0.
+
+Using distinct values here avoids a warning in SCST "LEGACY: SHARED HBA";
+and it is necessary when using multiple LUNs started at the same time
+(eg. on node failover) to prevent a race condition in tcm_core on mkdir()
+in /sys/kernel/config/target/core/.
+</longdesc>
+<shortdesc lang="en">SCST iblock device number</shortdesc>
+<content type="integer" default="0"/>
+</parameter>
+
+<parameter name="lio_alua_tpg" required="0" unique="0">
+<longdesc lang="en">
+White-space separated list of SCST Asymmetric Logical Unit Assignment
+ (ALUA) target port group names.
+
+SCSI-4 ALUA is a multipathing method that allows each target port to
+manage access states and path attributes using an explict method, or
+implicitly using target-side configFS operations.
+</longdesc>
+<shortdesc lang="en">SCST ALUA target port group name</shortdesc>
+<content type="string"/>
+</parameter>
+
+</parameters>
+
+<actions>
+<action name="start"        timeout="60" />
+<action name="stop"         timeout="60" />
+<action name="promote"      timeout="60" />
+<action name="demote"       timeout="60" />
+<action name="notify"       timeout="60" />
+<action name="stop"         timeout="120" />
+<action name="monitor"      depth="0" timeout="20" interval="10" />
+<action name="monitor"      depth="0" timeout="20" interval="20" role="Slave" />
+<action name="monitor"      depth="0" timeout="20" interval="10" role="Master" />
+<action name="reload"       timeout="10" />
+<action name="status"       timeout="10" interval="10" depth="0" />
+<action name="meta-data"    timeout="5" />
+<action name="validate-all" timeout="10" />
+</actions>
+</resource-agent>
+END
+}
+
+#######################################################################
+SCSTLogicalUnit_usage() {
+	cat <<END
+usage: $0 {start|stop|promote|demote|notify|status|monitor|reload|validate-all|meta-data}
+
+Expects to have a fully populated OCF RA-compliant environment set.
+END
+}
+
+update_alua_access_state() {
+    local tpg="$1"
+
+    case $2 in
+        standby)
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpg} s || {
+                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "ALUA: $tpgn is not optimized"
+            ;;
+        optimized)
+            ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} ${tpg} o || {
+                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}!";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "ALUA: ${optimized} is now optimized"
+            ;;
+    esac
+
+    return $OCF_SUCCESS
+
+}
+
+update_master_score() {
+    local score
+    local index
+    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+    score=0
+
+    # We have an array with all TPGs, the left most
+    # one receeives the highest score. TPGs must be named
+    # like the node names in Pacemaker.
+    for (( index = 0; index < ${#tpgs[@]}; index++ )); do
+        if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
+            score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
+            break
+        fi
+    done
+
+    ocf_log debug "Setting master score to $score"
+    if [ $score -gt 0 ]; then
+	set_master_score $score
+    else
+	remove_master_score
+    fi
+}
+
+set_master_score() {
+    # Use quiet mode (-Q) to quench logging. Actual score updates
+    # will get logged by attrd anyway
+    ocf_run ${HA_SBIN_DIR}/crm_master -Q -l reboot -v $1
+}
+
+remove_master_score() {
+    ocf_run ${HA_SBIN_DIR}/crm_master -l reboot -D
+}
+
+SCSTLogicalUnit_acls() {
+    declare -a acls_del
+    local acls_del
+    local acl_full_path
+    local acls_path
+    local acl_node
+    local acl
+    local target
+
+    # Adjust acls for all targets this LUN is associated to
+    for target in ${OCF_RESKEY_target_id}; do
+        acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/acls"
+        # Get all existing acls for this LUN, fill it in an array.
+        acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
+
+        # Only need to add acls on start,monitor or reload
+        case $__OCF_ACTION in
+            monitor|start|reload)
+                # Add LUN acl if not already set
+                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}"
+                for initiator in $(echo ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
+                    acl_full_path="${acls_path}/${initiator}/lun_${OCF_RESKEY_lun}"
+                    # Is the acl already in place?
+                    if [[ ! -d "${acl_full_path}" ]]; then
+                        # What "lio_node --addlunacl" does
+                        # for iSCSI works also for qla2xxx
+                        mkdir -p ${acl_full_path} && \
+                        ln -sf ${acls_path}/../lun/lun_${OCF_RESKEY_lun} \
+                        ${acl_full_path}/lun_${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    fi
+                    # Remove valid acls from "clean-them-up"-array.
+                    for index in ${!acls_del[@]}; do
+                        if [ "${acls_del[$index]}" = "$acl_full_path" ]; then
+                        unset acls_del[$index]
+                            break
+                        fi
+                    done
+                done
+            ;;
+        esac
+        # Check if there is an acl for the current LUN, that is
+        # not allowed. On "stop" all acls are deleted for this LUN.
+        ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}"
+        for acl in ${acls_del[@]}; do
+            if [[ -d ${acl} ]]; then
+                # Removing the lun subdir, has the same effect
+                # as lio_node --dellunacl.
+                rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl} || exit $OCF_ERR_GENERIC
+            fi
+            # Delete node-acl if no more lun assignments are remaining
+            acl_node=${acl%/*}
+            if [[ ! $(ls -d ${acl_node}/lun_* 2>/dev/null) ]]; then
+                ocf_log debug "No more lun acls for initiator ${acl_node##*/}, delete node acl"
+                rmdir ${acl_node}
+                [[ -d ${acl_node} ]] && exit $OCF_ERR_GENERIC
+            fi
+        done
+    done
+
+    return $OCF_SUCCESS
+}
+
+SCSTLogicalUnit_start() {
+    SCSTLogicalUnit_monitor
+    rc=$?
+    case $rc in
+        $OCF_SUCCESS|$OCF_RUNNING_MASTER) return $rc ;;
+    esac
+
+    local lun_path
+    local dev_path
+    local target
+    local tpg
+    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+
+    dev_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}"
+
+    # For lio, we first have to create a target device, then
+    # add it to the Target Portal Group as an LU.
+    if ! [ -e "${dev_path}" ]; then
+        ocf_run tcm_node --createdev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+            ${OCF_RESKEY_path} || exit $OCF_ERR_GENERIC
+    fi
+    if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
+	ocf_run tcm_node --setunitserialwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+            ${OCF_RESKEY_scsi_sn} || exit $OCF_ERR_GENERIC
+    fi
+    # A LU can be exported by serveral targets
+    for target in ${OCF_RESKEY_target_id}; do
+        lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}"
+        mkdir -p ${lun_path} && \
+        ln -s ${dev_path} ${lun_path}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
+    done
+
+    # For ALUA, create the target port group name for this lun
+    # and assign the group to the lun
+    if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+        for (( index = 0; index < ${#tpgs[@]}; index++ )); do
+            lun_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua"
+            # Only add the ALUATPG if it does not already exist,
+            # and always set a specific TPG id
+            if [ ! -d ${lun_path}/${tpgs[$index]} ]; then
+                ocf_run tcm_node --addtgptgpwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
+                    ${tpgs[$index]} $(( $index + 1 )) || exit $OCF_ERR_GENERIC
+	        # Initially switch it into standby mode and
+                # only allow implicit state changes.
+                ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+                    ${tpgs[$index]} s || exit $OCF_ERR_GENERIC
+                ocf_run tcm_node --setaluatype=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
+                    ${tpgs[$index]} both || exit $OCF_ERR_GENERIC
+            fi
+            # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
+            # for "multi-node targets"
+            for target in ${OCF_RESKEY_target_id}; do
+                # Only assign the ALUA TPG for this node
+                if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
+                    lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
+                    # Do it manually and not with tcm_node, to also
+                    # work with FC
+                    echo ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
+                fi
+            done
+        done
+    fi
+
+    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+        SCSTLogicalUnit_acls || exit $OCF_ERR_GENERIC
+    fi
+
+    ocf_is_ms && update_master_score
+    return $OCF_SUCCESS
+}
+
+SCSTLogicalUnit_reload() {
+    case $OCF_RESKEY_fabric in
+	iscsi|qla2xxx)
+            SCSTLogicalUnit_start
+	    ;;
+    esac
+
+    return $OCF_SUCCESS
+}
+
+SCSTLogicalUnit_stop() {
+    local target
+    # If our backing device (or file) doesn't even exist, we're not running
+    [ -e ${OCF_RESKEY_path} ] || return $OCF_NOT_RUNNING
+
+    SCSTLogicalUnit_monitor
+    remove_master_score
+    if [ $? -eq $OCF_SUCCESS ]; then
+        SCSTLogicalUnit_acls
+        # Delete LUN for all its targets
+        for target in ${OCF_RESKEY_target_id}; do
+	    case $OCF_RESKEY_fabric in
+	        iscsi)
+	            ocf_run lio_node --dellun=${target} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    ;;
+	        qla2xxx)
+                    echo -e "/qla2xxx/${target}/luns delete lun=${OCF_RESKEY_lun}\nexit\nexit" | targetcli
+                    ;;
+	    esac
+        done
+	ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
+    fi
+
+    return $OCF_SUCCESS
+}
+
+SCSTLogicalUnit_monitor() {
+    local cfgfs_path_lun
+    local cfgfs_path_core
+    local alua_state
+    local target
+    local index
+
+    cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
+    alua_state=2
+    declare -a ids=( $(echo ${OCF_RESKEY_target_id}) )
+    index=${#ids[@]}
+    # Check all targets
+    for target in ${OCF_RESKEY_target_id}; do
+        cfgfs_path_lun="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}/udev_path"
+        if [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
+           [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ]; then
+                (( index-- ))
+        fi
+    done
+
+    if [[ $index -eq 0 ]]; then
+        # The lun seems to be availaddble, also verify/fix its acls
+        SCSTLogicalUnit_acls || exit $?
+
+        # Now check the ALUA state
+        if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+            alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$HOSTNAME/alua_access_state)"
+            case $alua_state in
+                0)
+                    update_master_score
+                    return $OCF_RUNNING_MASTER
+                    ;;
+                2)
+                    update_master_score
+                    return $OCF_SUCCESS
+                    ;;
+                *)
+                    return $OCF_FAILED_MASTER
+                    ;;
+           esac
+        fi
+        return $OCF_SUCCESS
+    fi
+    # catch only "half"-configured LUNs, manual intervention
+    # may be needed ... but only on start or monitor
+    if [[ $index -ne ${#ids[@]} ]]; then
+        case $__OCF_ACTION in
+            monitor|start)
+                ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated correctly to all its targets!"
+                remove_master_score
+                exit $OCF_ERR_GENERIC
+                ;;
+            stop)
+                remove_master_score
+                return $OCF_SUCCESS
+                ;;
+        esac
+    fi
+
+    return $OCF_NOT_RUNNING
+}
+
+SCSTLogicalUnit_promote() {
+	# Keep trying to promote the resource;
+	# wait for the CRM to time us out if this fails
+	while true; do
+		SCSTLogicalUnit_monitor
+                rc=$?
+
+		case $rc in
+		$OCF_SUCCESS)
+                    update_alua_access_state $HOSTNAME optimized || {
+                        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "ALUA: promote successfull, TPG $HOSTNAME is now optimized"
+		    ;;
+		$OCF_NOT_RUNNING)
+	            ocf_log error "Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
+	            break
+	            ;;
+		$OCF_RUNNING_MASTER)
+	            ocf_log debug "Promotion successful"
+	            rc=$OCF_SUCCESS
+	            break
+	            ;;
+		esac
+		sleep 3
+	done
+
+	return $rc
+}
+
+SCSTLogicalUnit_demote() {
+	# Keep trying to demote the resource;
+	# wait for the CRM to time us out if this fails
+	while true; do
+		SCSTLogicalUnit_monitor
+                rc=$?
+
+		case $rc in
+		$OCF_RUNNING_MASTER)
+                    update_alua_access_state $HOSTNAME standby || {
+                        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "ALUA: demote successfull, TPG $HOSTNAME is now standby"
+		    ;;
+		$OCF_NOT_RUNNING)
+	            ocf_log error "Trying to demote a resource that was not started"
+	            break
+	            ;;
+		$OCF_SUCCESS)
+	            ocf_log debug "Demotion successful"
+	            rc=$OCF_SUCCESS
+	            break
+	            ;;
+		esac
+		sleep 3
+	done
+
+	return $rc
+}
+
+SCSTLogicalUnit_notify() {
+    local n_type=$OCF_RESKEY_CRM_meta_notify_type
+    local n_op=$OCF_RESKEY_CRM_meta_notify_operation
+    local demoteit=$OCF_RESKEY_CRM_meta_notify_demote_uname
+    local promoteit=$OCF_RESKEY_CRM_meta_notify_promote_uname
+    local stopit=$OCF_RESKEY_CRM_meta_notify_stop_uname
+    local startit=$OCF_RESKEY_CRM_meta_notify_start_uname
+    local master=$OCF_RESKEY_CRM_meta_notify_master_uname
+    local slave=$OCF_RESKEY_CRM_meta_notify_slave_uname
+    local node
+    local instance
+
+    case $n_type/$n_op in
+        post/start)
+            # Switch all new slave instances TPG to standby
+            for node in $startit; do
+                # Do we have any master(s) at all and did the start happened locally?
+                if [ "$node" = "$HOSTNAME" ]; then
+                    # We are slave: be sure the master(s) TPG is also
+                    # set to optimized (without luns) on this node.
+                    # We rely on default standby state on creation.
+                    for instance in $master; do
+                         update_alua_access_state $instance optimized
+                    done
+                fi
+            done
+            ;;
+        post/promote)
+            for node in $promoteit; do
+                # Switch all new master instances TPG to optimized.
+                update_alua_access_state $node optimized
+            done
+            ;;
+        post/demote)
+            for node in $demoteit; do
+                # Switch all new slave instances TPG to standby
+                update_alua_access_state $node standby
+            done
+            ;;
+        post/stop)
+            # So some node(s) has/have inactive resources, is it me?
+            for node in $stopit; do
+                if [ "$node" != "$HOSTNAME" ]; then
+                    # Another node stopped the resource,
+                    # its TPGs are definitely standby.
+                    update_alua_access_state $node standby
+                fi
+            done
+            ;;
+    esac
+
+    return $OCF_SUCCESS
+}
+
+SCSTLogicalUnit_validate() {
+    # Do we have all required variables?
+    for var in target_id lun path; do
+	param="OCF_RESKEY_${var}"
+	if [ -z "${!param}" ]; then
+	    ocf_log error "Missing resource parameter \"$var\"!"
+	    exit $OCF_ERR_CONFIGURED
+	fi
+    done
+
+    # Is the configured fabric supported?
+    case "$OCF_RESKEY_fabric" in
+	"iscsi"|"qla2xxx")
+	    ;;
+	*)
+	    ocf_log error "Unsupported SCST target fabric \"$OCF_RESKEY_fabric\"!"
+	    exit $OCF_ERR_CONFIGURED
+	    ;;
+    esac
+
+    # Is there an ALUA TPG defined for each target this LUN is attached to?
+    if [ -n "${OCF_RESKEY_lio_alua_tpg}" ] && [ "$__OCF_ACTION" != "stop" ]; then
+        declare -a nrtpg=( ${OCF_RESKEY_lio_alua_tpg} )
+        declare -a nrids=( ${OCF_RESKEY_target_id} )
+
+        if [ ${#nrtpg[@]} -ne ${#nrids[@]} ]; then
+	    ocf_log error "Number of ALUA TPGs (${#nrtpg[@]}) does not match number of targets (${#nrids[@]})!"
+	    exit $OCF_ERR_CONFIGURED
+        fi
+    fi
+
+    # Do we have any configuration parameters that the current
+    # fabric does not support?
+    local unsupported_params
+    local var
+    local envar
+    case $OCF_RESKEY_fabric in
+	iscsi)
+	    unsupported_params=""
+	    ;;
+    esac
+    for var in ${unsupported_params}; do
+	envar=OCF_RESKEY_${var}
+	defvar=OCF_RESKEY_${var}_default
+	if [ -n "${!envar}" ]; then
+	    if  [[ "${!envar}" != "${!defvar}" ]];then 
+	        case "$__OCF_ACTION" in
+                    start|validate-all)
+                      ocf_log warn "Configuration parameter \"${var}\"" \
+                       "is not supported by SCST's ${OCF_RESKEY_fabric} fabric" \
+                       "and will be ignored." ;;
+	        esac
+	    fi
+	fi
+    done
+
+    if ! ocf_is_probe; then
+    # Do we have all required binaries?
+	case $OCF_RESKEY_fabric in
+	    iscsi)
+		check_binary tcm_node
+		check_binary lio_node
+                ;;
+	    qla2xxx)
+		check_binary tcm_node
+		check_binary targetcli
+		;;
+	esac
+
+        # Is the required kernel functionality available?
+	case $OCF_RESKEY_fabric in
+	    iscsi|qla2xxx)
+		[ -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]
+		if [ $? -ne 0 ]; then
+		    ocf_log err "/sys/kernel/config/target/${OCF_RESKEY_fabric} does not exist or is not a directory -- check if required modules are loaded."
+		    exit $OCF_ERR_INSTALLED
+		fi
+		;;
+	esac
+    fi
+
+    # We need the nodename several times.
+    HOSTNAME=$(crm_node -n)
+
+    return $OCF_SUCCESS
+}
+
+
+case $1 in
+  meta-data)
+	meta_data
+	exit $OCF_SUCCESS
+	;;
+  usage|help)
+	SCSTLogicalUnit_usage
+	exit $OCF_SUCCESS
+	;;
+esac
+
+if $USE_DEBUG_LOG ; then
+    exec 2>&9
+    set -x
+fi
+
+# Everything except usage and meta-data must pass the validate test
+SCSTLogicalUnit_validate
+
+case $__OCF_ACTION in
+start)		SCSTLogicalUnit_start;;
+stop)		SCSTLogicalUnit_stop;;
+promote)	SCSTLogicalUnit_promote;;
+demote)		SCSTLogicalUnit_demote;;
+notify)		SCSTLogicalUnit_notify;;
+monitor|status)	SCSTLogicalUnit_monitor;;
+reload)		ocf_log info "Reloading..."
+		SCSTLogicalUnit_reload
+		;;
+validate-all)	;;
+*)		SCSTLogicalUnit_usage
+		exit $OCF_ERR_UNIMPLEMENTED
+		;;
+esac
+rc=$?
+ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
+exit $rc
