@@ -135,20 +135,6 @@ SCSTTarget_start() {
     local mods
     local ids
 
-    # Be sure some default dirs are available
-    if [ ! -d /var/target/pr ]; then
-	mkdir -p /var/target/pr || {
-           ocf_log err "Unable to create /var/target/pr";
-           return $OCF_ERR_INSTALLED
-        }
-    fi
-    if [ ! -d /var/target/alua ]; then
-	mkdir -p /var/target/alua || {
-           ocf_log err "Unable to create /var/target/alua";
-           return $OCF_ERR_INSTALLED
-        }
-    fi
-
     # Load core modules if needed
     if [ ! -d /sys/kernel/scst_tgt ]; then
         for mod in scst scst_vdisk scst_disk; do
@@ -170,7 +156,7 @@ SCSTTarget_start() {
 
     # Load extra modules
     for mod in $other_mods; do
-      ocf_run -q modprobe -s  target_core_${mod} || {
+      ocf_run -q modprobe -s $mod || {
          ocf_log err "Unable to load ${mod} module";
          return $OCF_ERR_INSTALLED
       }
