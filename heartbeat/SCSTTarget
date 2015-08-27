@@ -238,16 +238,16 @@ SCSTTarget_start() {
     done
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set specific parameter ${OCF_RESKEY_additional_parameters} for target ${OCF_RESKEY_id}"
 
-    # SCST targets must have a LUN 0 - create it on target creation.
+    # SCST targets must have a LUN 0 - create a dummy on target creation.
     # As the LUN access restrictions are handled at LUN level,
     # put LUN 0 in the targets default group.
-    ocf_run -q echo "add_device nullio" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
-        ocf_log err "Unable to create device for LUN 0 on target ${OCF_RESKEY_id}.";
+    ocf_run -q echo "add_device dummy dummy=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+        ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
         exit $OCF_ERR_GENERIC
     }
     for ids in ${OCF_RESKEY_id}; do
-        ocf_run -q echo "add nullio 0" >${FABRIC_BASE}/${ids}/luns/mgmt || {
-            ocf_log err "Unable to add LUN 0 to target ${OCF_RESKEY_id}.";
+        ocf_run -q echo "add dummy 0" >${FABRIC_BASE}/${ids}/luns/mgmt || {
+            ocf_log err "Unable to add dummy LUN 0 to target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
     done
