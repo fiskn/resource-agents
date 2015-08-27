@@ -176,11 +176,13 @@ SCSTTarget_start() {
             fi
 
             # Create the target
-            ocf_run -q echo "add_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
-                ocf_log err "Unable to create target ${OCF_RESKEY_id}.";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} initialized"
+            if [ ! -d ${FABRIC_BASE}/${OCF_RESKEY_id} ]; then
+                ocf_run -q echo "add_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
+                    ocf_log err "Unable to create target ${OCF_RESKEY_id}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} initialized"
+            fi
 
             # Define allowed portals
             if [ "${OCF_RESKEY_iscsi_portals}" != "${OCF_RESKEY_iscsi_portals_default}" ]; then
