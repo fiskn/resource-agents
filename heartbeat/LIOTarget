@@ -357,6 +357,7 @@ LIOTarget_monitor() {
         esac
     fi
 
+    return $OCF_SUCCESS
 }
 
 LIOTarget_validate() {
