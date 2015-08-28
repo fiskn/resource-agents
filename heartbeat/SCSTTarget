@@ -284,13 +284,33 @@ SCSTTarget_start() {
 
 SCSTTarget_stop() {
     local rc
+    local session
     SCSTTarget_monitor
     if [ $? =  $OCF_SUCCESS ]; then
 	case $OCF_RESKEY_fabric in
 	    iscsi)
-		# In lio, removing a target automatically removes all
-		# associated TPGs, network portals, and LUNs.
-		ocf_run -q lio_node --deliqn=${OCF_RESKEY_id} || exit $OCF_ERR_GENERIC
+                # The target dir is not available? Consider it stopped.
+                if [ -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
+                    # Disable the target to prevent new connections
+                    ocf_run -q echo "0" >"${FABRIC_BASE}/${ids}/enabled" || {
+                        ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Disabled iSCSI target ${OCF_RESKEY_id}"
+
+                    # Forcefully close all initiator sessions
+                    for session in $(ls -1 "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions"); do
+                        echo 1 >"${session}/force_close"
+                        ocf_log warn "Forcefully closed session from initiator ${session}.";
+                    done
+
+                    # Delete the target
+                    ocf_run -q echo "del_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
+                        ocf_log err "Unable to delete target ${OCF_RESKEY_id}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} deleted"
+                fi
 		;;
 	    qla2xxx)
                 # Unfortunately older targetcli has no meaningfull
@@ -387,7 +407,7 @@ SCSTTarget_validate() {
 
     # Is the configured implementation supported?
     case "$OCF_RESKEY_fabric" in
-	"iscsi"|"qla2xxx")
+	"iscsi")
 	    ;;
 	*)
 	    ocf_log error "Unsupported SCST fabric type \"$OCF_RESKEY_implementation\"!"
@@ -402,8 +422,6 @@ SCSTTarget_validate() {
     local envar
     case $OCF_RESKEY_fabric in
 	iscsi|qla2xxx)
-	    # TODO: Remove incoming_username and incoming_password
-	    # from this check when SCST 3.0 gets CHAP authentication
 	    unsupported_params="tid incoming_username incoming_password"
 	    ;;
     esac
@@ -426,10 +444,8 @@ SCSTTarget_validate() {
         # Do we have all required binaries?
 	case $OCF_RESKEY_fabric in
 	    iscsi|qla2xxx)
-		check_binary tcm_node
-		check_binary lio_node
-		check_binary targetcli
-                check_binary mountpoint
+		check_binary modprobe
+		check_binary rmmod
 		;;
 	esac
     fi
