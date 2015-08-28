@@ -167,7 +167,7 @@ SCSTTarget_start() {
     case ${OCF_RESKEY_fabric} in
         iscsi)
             # Initiate the fabric if needed
-            if [ ! -d ${FABRIC_BASE} ]; then
+            if [ ! -d "${FABRIC_BASE}" ]; then
                 ocf_run -q modprobe -s  iscsi_scst || {
                    ocf_log err "Unable to load iscsi_scst  module";
                    return $OCF_ERR_INSTALLED
@@ -176,7 +176,7 @@ SCSTTarget_start() {
             fi
 
             # Create the target
-            if [ ! -d ${FABRIC_BASE}/${OCF_RESKEY_id} ]; then
+            if [ ! -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
                 ocf_run -q echo "add_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
                     ocf_log err "Unable to create target ${OCF_RESKEY_id}.";
                     exit $OCF_ERR_GENERIC
@@ -187,10 +187,12 @@ SCSTTarget_start() {
             # Define allowed portals
             if [ "${OCF_RESKEY_iscsi_portals}" != "${OCF_RESKEY_iscsi_portals_default}" ]; then
                 for portal in ${OCF_RESKEY_iscsi_portals}; do
-                    ocf_run -q echo "add_target_attribute ${OCF_RESKEY_id} allowed_portal ${portal}" >${FABRIC_BASE}/mgmt || {
-                        ocf_log err "Unable to set allowed portal ${portal} on target ${OCF_RESKEY_id}.";
-                        exit $OCF_ERR_GENERIC
-                    }
+                   if ! grep -qE "${portal}$" ${FABRIC_BASE}/${OCF_RESKEY_id}/allowed_portal* ; then
+                        ocf_run -q echo "add_target_attribute ${OCF_RESKEY_id} allowed_portal ${portal}" >${FABRIC_BASE}/mgmt || {
+                            ocf_log err "Unable to set allowed portal ${portal} on target ${OCF_RESKEY_id}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                   fi
                 done
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Allowed portals on target ${OCF_RESKEY_id} are set to: ${OCF_RESKEY_iscsi_portals}."
             fi
@@ -239,15 +241,24 @@ SCSTTarget_start() {
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set specific parameter ${OCF_RESKEY_additional_parameters} for target ${OCF_RESKEY_id}"
 
     # SCST targets must have a LUN 0 - create a dummy on target creation.
-    # As the LUN access restrictions are handled at LUN level,
-    # put LUN 0 in the targets default group.
-    ocf_run -q echo "add_device dummy dummy=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
-        ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
-        exit $OCF_ERR_GENERIC
-    }
+    # Put LUN 0 in the target default group.
+    if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy" ]; then
+        ocf_run -q echo "add_device dummy dummy=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+            ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
     for ids in ${OCF_RESKEY_id}; do
-        ocf_run -q echo "add dummy 0" >${FABRIC_BASE}/${ids}/luns/mgmt || {
-            ocf_log err "Unable to add dummy LUN 0 to target ${OCF_RESKEY_id}.";
+        # Add dummy LUN 0 to the target if it is not already available.
+        if [ ! -d "${FABRIC_BASE}/${ids}/luns/0" ]; then
+            ocf_run -q echo "add dummy 0" >${FABRIC_BASE}/${ids}/luns/mgmt || {
+                ocf_log err "Unable to add dummy LUN 0 to target ${OCF_RESKEY_id}.";
+                exit $OCF_ERR_GENERIC
+            }
+        fi
+        # Check if LUN 0 is exported but is _not_ our dummy device
+        [ "$(cat ${FABRIC_BASE}/${ids}/luns/0/device/prod_id 2>/dev/null)" = "dummy" ] || {
+            ocf_log err "The LUN 0 exported in the default group of target ${OCF_RESKEY_id} is not the expected dummy device.";
             exit $OCF_ERR_GENERIC
         }
     done
