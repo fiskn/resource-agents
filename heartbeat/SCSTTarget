@@ -411,7 +411,7 @@ SCSTTarget_validate() {
     for var in ${required_vars}; do
 	param="OCF_RESKEY_${var}"
 	if [ -z "${!param}" ]; then
-	    ocf_log error "Missing resource parameter \"$var\"!"
+	    ocf_log error "Missing resource parameter \"${var}\"!"
 	    exit $OCF_ERR_CONFIGURED
 	fi
     done
@@ -421,7 +421,7 @@ SCSTTarget_validate() {
 	"iscsi")
 	    ;;
 	*)
-	    ocf_log error "Unsupported SCST fabric type \"$OCF_RESKEY_implementation\"!"
+	    ocf_log error "Unsupported SCST fabric type \"${OCF_RESKEY_fabric}\"!"
 	    exit $OCF_ERR_CONFIGURED
 	    ;;
     esac
@@ -457,6 +457,7 @@ SCSTTarget_validate() {
 	    iscsi|qla2xxx)
 		check_binary modprobe
 		check_binary rmmod
+		check_binary find
 		;;
 	esac
     fi
@@ -483,9 +484,6 @@ case $__OCF_ACTION in
 start)		SCSTTarget_start;;
 stop)		SCSTTarget_stop;;
 monitor|status)	SCSTTarget_monitor;;
-reload)		ocf_log info "Reloading..."
-	        SCSTTarget_start
-		;;
 validate-all)	;;
 *)		SCSTTarget_usage
 		exit $OCF_ERR_UNIMPLEMENTED
