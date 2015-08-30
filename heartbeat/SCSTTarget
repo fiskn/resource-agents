@@ -330,6 +330,16 @@ SCSTTarget_stop() {
 		;;
 	esac
     fi
+    # If there is no subdirectory in the fabric base dir, no target of
+    # this type is configured.
+    # Disable this type of fabric after its last target was disabled.
+    if [ $(find ${FABRIC_BASE} -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 0 ]; then
+    ocf_run -q echo "0" >"${FABRIC_BASE}/enabled" || {
+        ocf_log err "Unable to disable fabric of type ${OCF_RESKEY_fabric}.";
+        exit $OCF_ERR_GENERIC
+    }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
+    fi
 
     return $OCF_SUCCESS
 }
