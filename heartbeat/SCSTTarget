@@ -275,9 +275,10 @@ SCSTTarget_start() {
 
     # Be sure all Targets are finally enabled
     ocf_run -q echo "1" >"${FABRIC_BASE}/enabled" || {
-        ocf_log err "Unable to globaly enable ${OCF_RESKEY_fabric} targets.";
+        ocf_log err "Unable to enable ${OCF_RESKEY_fabric} fabric.";
         exit $OCF_ERR_GENERIC
     }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Enabled ${OCF_RESKEY_fabric} fabric."
 
     return $OCF_SUCCESS
 }
