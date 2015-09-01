@@ -130,21 +130,18 @@ SCSTTarget_start() {
     local value
     local initiator
     local portal
-    local sysfs_path
     local mod
-    local mods
+    local other_mods
     local ids
 
-    # Load core modules if needed
-    if [ ! -d /sys/kernel/scst_tgt ]; then
-        for mod in scst scst_vdisk scst_disk; do
-           ocf_run -q modprobe -s $mod || {
-              ocf_log err "Unable to load ${mod} module";
-              return $OCF_ERR_INSTALLED
-           }
-           ocf_log debug "${OCF_RESOURCE_INSTANCE}: ${mod} module loaded."
-        done
-    fi
+    # Load core modules
+    for mod in scst scst_vdisk scst_disk; do
+       ocf_run -q modprobe -s $mod || {
+          ocf_log err "Unable to load ${mod} module";
+          return $OCF_ERR_INSTALLED
+       }
+       ocf_log debug "${OCF_RESOURCE_INSTANCE}: ${mod} module loaded."
+    done
 
     # Intel Nehalem processor supports hardware accelerated crc32
     # algorithm with the new CRC32 instruction in SSE 4.2 instruction set.
@@ -230,9 +227,8 @@ SCSTTarget_start() {
 	name=${param%=*}
 	value=${param#*=}
         for ids in ${OCF_RESKEY_id}; do
-	    sysfs_path="${FABRIC_BASE}/${ids}/${name}"
 	    if [ -e ${configfs_path} ]; then
-	        echo "${value}" >${configfs_path} || exit $OCF_ERR_GENERIC
+	        echo "${value}" >"${FABRIC_BASE}/${ids}/${name}" || exit $OCF_ERR_GENERIC
 	    else
 	        ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
 	    fi
