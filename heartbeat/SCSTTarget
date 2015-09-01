@@ -31,7 +31,7 @@ OCF_RESKEY_fabric_default="iscsi"
 
 # Listen on 0.0.0.0 by default
 OCF_RESKEY_iscsi_portals_default="0.0.0.0"
-: ${OCF_RESKEY_portals=${OCF_RESKEY_iscsi_portals_default}}
+: ${OCF_RESKEY_iscsi_portals=${OCF_RESKEY_iscsi_portals_default}}
 
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
@@ -42,8 +42,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.0.1">
-<version>0.0.1</version>
+<resource-agent name="SCSTTarget" version="0.0.2">
+<version>0.0.2</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
@@ -239,7 +239,7 @@ SCSTTarget_start() {
     # SCST targets must have a LUN 0 - create a dummy on target creation.
     # Put LUN 0 in the target default group.
     if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy" ]; then
-        echo "add_device dummy dummy=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+        echo "add_device dummy dummy=1;size_mb=1;read_zero=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
             ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
