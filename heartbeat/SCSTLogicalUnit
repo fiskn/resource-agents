@@ -30,7 +30,12 @@
 # Set the iSCSI fabric as default 
 OCF_RESKEY_fabric_default="iscsi"
 : ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
-
+# Set default t10_vend_id
+OCF_RESKEY_t10_vend_id_default="STORCIUM"
+: ${OCF_RESKEY_t10_vend_id=${OCF_RESKEY_t10_vend_id_default}}
+# Set the default SCST device handler
+OCF_RESKEY_device_handler_default="vdisk_fileio"
+: ${OCF_RESKEY_device_handler=${OCF_RESKEY_device_handler_default}}
 
 # Use a SCSI SN that is unique across the cluster,
 # and persistent in the event of resource migration.
@@ -108,14 +113,22 @@ The Logical Unit number (LUN) exposed to initiators.
 
 <parameter name="path" required="1" unique="0">
 <longdesc lang="en">
-The path to the block device exposed. Some fabrics allow this
-to be a regular file, too.
+The path to the block device or file to be exposed.
 </longdesc>
 <shortdesc lang="en">Block device (or file) path</shortdesc>
 <content type="string" />
 </parameter>
 
-<parameter name="scsi_sn" required="0" unique="1">
+<parameter name="device_handler" required="0" unique="0">
+<longdesc lang="en">
+The SCST devive handler to be used for this Logical Unit.
+The supported handlers for this RA are:
+vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio , disk
+</longdesc>
+<shortdesc lang="en">SCST device handler</shortdesc>
+<content type="string" default="${OCF_RESKEY_device_handler_default}"/>
+</parameter>
+
 <longdesc lang="en">
 The SCSI serial number to be configured for this Logical Unit.
 The default is a hash of the resource name, truncated to 8 bytes.
@@ -136,8 +149,7 @@ The SCSI product ID to be configured for this Logical Unit.
 <longdesc lang="en">
 Additional LU parameters. A space-separated list of "name=value" pairs
 which will be passed through to the targets management
-interface. The supported parameters are fabric
-dependent. Neither the name nor the value may contain whitespace.
+interface. Neither the name nor the value may contain whitespace.
 </longdesc>
 <shortdesc lang="en">List of LU parameters</shortdesc>
 <content type="string" />
@@ -148,28 +160,14 @@ dependent. Neither the name nor the value may contain whitespace.
 Allowed initiators. A space-separated list of initiators allowed to
 connect to this lun. Initiators may be listed in any syntax
 the target fabric allows. If this parameter is empty or
-not set, access to this lun will not be allowed from any initiator,
-if target is not in demo mode.
+not set, access to this lun will not be allowed from any initiator.
 </longdesc>
 <shortdesc lang="en">List of initiators allowed to connect
 to this lun.</shortdesc>
 <content type="string" default=""/>
 </parameter>
 
-<parameter name="lio_iblock" required="0" unique="0">
-<longdesc lang="en">
-SCST iblock device name, a number starting from 0.
-
-Using distinct values here avoids a warning in SCST "LEGACY: SHARED HBA";
-and it is necessary when using multiple LUNs started at the same time
-(eg. on node failover) to prevent a race condition in tcm_core on mkdir()
-in /sys/kernel/config/target/core/.
-</longdesc>
-<shortdesc lang="en">SCST iblock device number</shortdesc>
-<content type="integer" default="0"/>
-</parameter>
-
-<parameter name="lio_alua_tpg" required="0" unique="0">
+<parameter name="alua_tpg" required="0" unique="0">
 <longdesc lang="en">
 White-space separated list of SCST Asymmetric Logical Unit Assignment
  (ALUA) target port group names.
