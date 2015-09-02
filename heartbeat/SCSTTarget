@@ -227,7 +227,7 @@ SCSTTarget_start() {
 	name=${param%=*}
 	value=${param#*=}
         for ids in ${OCF_RESKEY_id}; do
-	    if [ -e ${configfs_path} ]; then
+	    if [ -e ${FABRIC_BASE}/${ids}/${name} ]; then
 	        echo "${value}" >"${FABRIC_BASE}/${ids}/${name}" || exit $OCF_ERR_GENERIC
 	    else
 	        ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
