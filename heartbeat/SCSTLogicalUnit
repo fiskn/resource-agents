@@ -42,8 +42,8 @@ OCF_RESKEY_device_handler_default="vdisk_fileio"
 # To have a reasonably unique default SCSI SN, use the first 8 bytes
 # of an MD5 hash of of $OCF_RESOURCE_INSTANCE
 sn=`echo -n "${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
-OCF_RESKEY_scsi_sn_default=${sn:0:8}
-: ${OCF_RESKEY_scsi_sn=${OCF_RESKEY_scsi_sn_default}}
+OCF_RESKEY_t10_device_id_default=${sn:0:8}
+: ${OCF_RESKEY_t10_device_id=${OCF_RESKEY_t10_device_id_default}}
 
 # for debugging this RA
 DEBUG_LOG_DIR=/tmp/SCSTLogicalUnit.ocf.ra.debug
@@ -129,12 +129,13 @@ vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio , disk
 <content type="string" default="${OCF_RESKEY_device_handler_default}"/>
 </parameter>
 
+<parameter name="t10_device_id" required="0" unique="1">
 <longdesc lang="en">
 The SCSI serial number to be configured for this Logical Unit.
 The default is a hash of the resource name, truncated to 8 bytes.
 </longdesc>
-<shortdesc lang="en">SCSI serial number</shortdesc>
-<content type="string" default="${OCF_RESKEY_scsi_sn_default}"/>
+<shortdesc lang="en">T10 device identifier</shortdesc>
+<content type="string" default="${OCF_RESKEY_t10_device_id_default}"/>
 </parameter>
 
 <parameter name="product_id" required="0" unique="0">
@@ -351,9 +352,9 @@ SCSTLogicalUnit_start() {
         ocf_run tcm_node --createdev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
             ${OCF_RESKEY_path} || exit $OCF_ERR_GENERIC
     fi
-    if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
+    if [ -n "${OCF_RESKEY_t10_device_id}" ]; then
 	ocf_run tcm_node --setunitserialwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-            ${OCF_RESKEY_scsi_sn} || exit $OCF_ERR_GENERIC
+            ${OCF_RESKEY_t10_device_id} || exit $OCF_ERR_GENERIC
     fi
     # A LU can be exported by serveral targets
     for target in ${OCF_RESKEY_target_id}; do
