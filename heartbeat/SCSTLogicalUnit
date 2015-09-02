@@ -67,6 +67,9 @@ else
 fi
 # end of debugging aid
 
+# For convenience
+SCST_BASE="/sys/kernel/scst_tgt"
+FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
 #######################################################################
 
 meta_data() {
@@ -123,7 +126,7 @@ The path to the block device or file to be exposed.
 <longdesc lang="en">
 The SCST devive handler to be used for this Logical Unit.
 The supported handlers for this RA are:
-vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio , disk
+vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio
 </longdesc>
 <shortdesc lang="en">SCST device handler</shortdesc>
 <content type="string" default="${OCF_RESKEY_device_handler_default}"/>
@@ -338,29 +341,77 @@ SCSTLogicalUnit_start() {
         $OCF_SUCCESS|$OCF_RUNNING_MASTER) return $rc ;;
     esac
 
-    local lun_path
+    local ini_path
+    local handler_path
     local dev_path
     local target
     local tpg
-    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+    declare -a tpgs=( $(echo ${OCF_RESKEY_alua_tpg}) )
 
-    dev_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}"
+    handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
+    dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
 
-    # For lio, we first have to create a target device, then
-    # add it to the Target Portal Group as an LU.
-    if ! [ -e "${dev_path}" ]; then
-        ocf_run tcm_node --createdev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-            ${OCF_RESKEY_path} || exit $OCF_ERR_GENERIC
+    # Check if handler is loaded
+    if [ ! -e "${handler_path}" ]; then
+        ocf_log err "Device handler ${OCF_RESKEY_device_handler} not loaded.";
+        exit $OCF_ERR_GENERIC
     fi
+
+    # Configure the backend device for the LU, name the
+    # device like the cluster resource.
+    if [ ! -e "${dev_path}" ]; then
+        echo "add_device ${OCF_RESOURCE_INSTANCE} filename=${OCF_RESKEY_path}" >${handler_path}/mgmt || {
+            ocf_log err "Unable to add device ${OCF_RESOURCE_INSTANCE} with path ${OCF_RESKEY_path} to ${OCF_RESKEY_device_handler} handler.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
+
+    # Set the SCSI serial number aka T10 device id
     if [ -n "${OCF_RESKEY_t10_device_id}" ]; then
-	ocf_run tcm_node --setunitserialwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-            ${OCF_RESKEY_t10_device_id} || exit $OCF_ERR_GENERIC
+        echo "${OCF_RESKEY_t10_device_id}" >${dev_path}/t10_dev_id || {
+            ocf_log err "Unable to set T10 device id ${OCF_RESKEY_t10_device_id} for device ${OCF_RESOURCE_INSTANCE}.";
+            exit $OCF_ERR_GENERIC
+        }
     fi
-    # A LU can be exported by serveral targets
+
+    # Set all additional parameters
+    for param in ${OCF_RESKEY_additional_parameters}; do
+        name=${param%=*}
+        value=${param#*=}
+        if [ -e ${dev_path}/${name} ]; then
+            echo "${value}" >"${dev_path}/${name}" || exit $OCF_ERR_GENERIC
+        else
+            ocf_log warn "Unsupported ${OCF_RESKEY_device_handler} device parameter ${name}: will be ignored."
+        fi
+    done
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Tried to set specific parameter ${OCF_RESKEY_additional_parameters} for device handler ${OCF_RESKEY_device_handler}."
+
+    # SCST advanced initiators access control.
+    # 1. Create an empty initiator group for all targets
+    #    that will export this LU and add the LU
     for target in ${OCF_RESKEY_target_id}; do
-        lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}"
-        mkdir -p ${lun_path} && \
-        ln -s ${dev_path} ${lun_path}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
+        ini_path="${FABRIC_BASE}/${target}/ini_groups"
+        # Check if the target is available
+        if [ ! -e "${FABRIC_BASE}/${target}" ]; then
+            ocf_log err "Target ${OCF_RESKEY_target_id} not configured.";
+            exit $OCF_ERR_GENERIC
+        fi
+        # Create the initiator group, name it like the cluster resource.
+        if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}" ]; then
+            echo "create ${OCF_RESOURCE_INSTANCE}" >${ini_path}/mgmt || {
+                ocf_log err "Unable to create initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
+                exit $OCF_ERR_GENERIC
+            }
+        fi
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
+        # Add the LU to the initiator group
+        if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/${OCF_RESKEY_lun}" ]; then
+            echo "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" >${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/mgmt || {
+                ocf_log err "Unable to add lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
+                exit $OCF_ERR_GENERIC
+            }
+        fi
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
     done
 
     # For ALUA, create the target port group name for this lun
