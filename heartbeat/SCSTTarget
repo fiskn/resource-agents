@@ -381,7 +381,7 @@ SCSTTarget_monitor() {
     # in either case, consider ist stopped
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Check if fabric of type ${OCF_RESKEY_fabric} is loaded and enabled.";
     if [ -e ${FABRIC_BASE}/enabled ]; then
-        [ `cat ${FABRIC_BASE}/enabled` -eq 1 ] || {
+        [ `scst_sysfs_read ${FABRIC_BASE}/enabled` -eq 1 ] || {
             ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not enabled.";
             return $OCF_NOT_RUNNING
         }
@@ -408,9 +408,9 @@ SCSTTarget_monitor() {
     # if the target is there, but it is not enabled, then
     # we also consider it stopped
     for ids in ${OCF_RESKEY_id}; do
-        path="${FABRIC_BASE}/${ids}/enable"
+        path="${FABRIC_BASE}/${ids}/enabled"
         if [ -e ${path} ]; then
-            [ `cat ${path}` -eq 1 ] || {
+            [ `scst_sysfs_read ${path}` -eq 1 ] || {
                 (( index-- ));
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Target ${OCF_RESKEY_id} is disabled.";
             }
