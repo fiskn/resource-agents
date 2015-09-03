@@ -31,19 +31,24 @@
 OCF_RESKEY_fabric_default="iscsi"
 : ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
 # Set default t10_vend_id
-OCF_RESKEY_t10_vend_id_default="STORCIUM"
-: ${OCF_RESKEY_t10_vend_id=${OCF_RESKEY_t10_vend_id_default}}
+OCF_RESKEY_vendor_id_default="STORCIUM"
+: ${OCF_RESKEY_vendor_id=${OCF_RESKEY_vendor_id_default}}
 # Set the default SCST device handler
 OCF_RESKEY_device_handler_default="vdisk_fileio"
 : ${OCF_RESKEY_device_handler=${OCF_RESKEY_device_handler_default}}
 
-# Use a SCSI SN that is unique across the cluster,
+# Use a default SCSI ID and SCSI SN that is unique across the cluster,
 # and persistent in the event of resource migration.
+# SCSI IDs are limited to 24 bytes. To have a reasonably unique
+# default SCSI SN, use the first 24 bytes of an MD5 hash of
+# $OCF_RESOURCE_INSTANCE
+sn=`echo -n "${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
+OCF_RESKEY_scsi_id_default="${sn:0:24}"
+: ${OCF_RESKEY_scsi_id=${OCF_RESKEY_scsi_id_default}}
 # To have a reasonably unique default SCSI SN, use the first 8 bytes
 # of an MD5 hash of of $OCF_RESOURCE_INSTANCE
-sn=`echo -n "${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
-OCF_RESKEY_t10_device_id_default=${sn:0:8}
-: ${OCF_RESKEY_t10_device_id=${OCF_RESKEY_t10_device_id_default}}
+OCF_RESKEY_scsi_sn_default=${sn:0:8}
+: ${OCF_RESKEY_scsi_sn=${OCF_RESKEY_scsi_sn_default}}
 
 # for debugging this RA
 DEBUG_LOG_DIR=/tmp/SCSTLogicalUnit.ocf.ra.debug
@@ -132,13 +137,30 @@ vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio
 <content type="string" default="${OCF_RESKEY_device_handler_default}"/>
 </parameter>
 
-<parameter name="t10_device_id" required="0" unique="1">
+rameter name="scsi_id" required="0" unique="1">
+<longdesc lang="en">
+The SCSI ID to be configured for this Logical Unit. The default
+is the resource name, truncated to 24 bytes.
+</longdesc>
+<shortdesc lang="en">SCSI ID</shortdesc>
+<content type="string" default="${OCF_RESKEY_scsi_id_default}"/>
+</parameter>
+
+<parameter name="scsi_sn" required="0" unique="1">
 <longdesc lang="en">
 The SCSI serial number to be configured for this Logical Unit.
 The default is a hash of the resource name, truncated to 8 bytes.
 </longdesc>
-<shortdesc lang="en">T10 device identifier</shortdesc>
-<content type="string" default="${OCF_RESKEY_t10_device_id_default}"/>
+<shortdesc lang="en">SCSI serial number</shortdesc>
+<content type="string" default="${OCF_RESKEY_scsi_sn_default}"/>
+</parameter>
+
+<parameter name="vendor_id" required="0" unique="0">
+<longdesc lang="en">
+The SCSI vendor ID to be configured for this Logical Unit.
+</longdesc>
+<shortdesc lang="en">SCSI vendor ID</shortdesc>
+<content type="string" default="${OCF_RESKEY_vendor_id_default}"/>
 </parameter>
 
 <parameter name="product_id" required="0" unique="0">
