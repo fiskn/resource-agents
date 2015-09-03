@@ -42,8 +42,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.0.2">
-<version>0.0.2</version>
+<resource-agent name="SCSTTarget" version="0.0.3">
+<version>0.0.3</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
@@ -111,6 +111,36 @@ END
 
 #######################################################################
 
+# Read the SCST sysfs attribute $1. See also scst/README for more information.
+scst_sysfs_read() {
+    local EAGAIN val
+
+    EAGAIN="Resource temporarily unavailable"
+    while true; do
+        if val="$(LC_ALL=C cat "$1" 2>&1)"; then
+            echo -n "${val%\[key\]}"
+            return 0
+	elif [ "${val/*: }" != "$EAGAIN" ]; then
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+# Write $1 into the SCST sysfs attribute $2. See also scst/README for more
+# information.
+scst_sysfs_write() {
+    local EAGAIN status
+
+    EAGAIN="Resource temporarily unavailable"
+    if status="$(LC_ALL=C; (echo -n "$1" > "$2") 2>&1)"; then
+        return 0
+    elif [ "${status/*: }" != "$EAGAIN" ]; then
+        return 1
+    fi
+    scst_sysfs_read /sys/kernel/scst_tgt/last_sysfs_mgmt_res >/dev/null
+}
+
 SCSTTarget_usage() {
 	cat <<END
 usage: $0 {start|stop|status|monitor|validate-all|meta-data}
@@ -174,7 +204,7 @@ SCSTTarget_start() {
 
             # Create the target
             if [ ! -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
-                echo "add_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
+                scst_sysfs_write "add_target ${OCF_RESKEY_id}" ${FABRIC_BASE}/mgmt || {
                     ocf_log err "Unable to create target ${OCF_RESKEY_id}.";
                     exit $OCF_ERR_GENERIC
                 }
@@ -185,7 +215,7 @@ SCSTTarget_start() {
             if [ "${OCF_RESKEY_iscsi_portals}" != "${OCF_RESKEY_iscsi_portals_default}" ]; then
                 for portal in ${OCF_RESKEY_iscsi_portals}; do
                    if ! grep -qE "${portal}$" ${FABRIC_BASE}/${OCF_RESKEY_id}/allowed_portal* ; then
-                       echo "add_target_attribute ${OCF_RESKEY_id} allowed_portal ${portal}" >${FABRIC_BASE}/mgmt || {
+                       scst_sysfs_write "add_target_attribute ${OCF_RESKEY_id} allowed_portal ${portal}" ${FABRIC_BASE}/mgmt || {
                            ocf_log err "Unable to set allowed portal ${portal} on target ${OCF_RESKEY_id}.";
                            exit $OCF_ERR_GENERIC
                        }
@@ -228,7 +258,7 @@ SCSTTarget_start() {
 	value=${param#*=}
         for ids in ${OCF_RESKEY_id}; do
 	    if [ -e ${FABRIC_BASE}/${ids}/${name} ]; then
-	        echo "${value}" >"${FABRIC_BASE}/${ids}/${name}" || exit $OCF_ERR_GENERIC
+	        scst_sysfs_write "${value}" "${FABRIC_BASE}/${ids}/${name}" || exit $OCF_ERR_GENERIC
 	    else
 	        ocf_log warn "Unsupported ${OCF_RESKEY_fabric} target parameter ${name}: will be ignored."
 	    fi
@@ -239,7 +269,7 @@ SCSTTarget_start() {
     # SCST targets must have a LUN 0 - create a dummy on target creation.
     # Put LUN 0 in the target default group.
     if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy" ]; then
-        echo "add_device dummy dummy=1;size_mb=1;read_zero=1" >${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+        scst_sysfs_write "add_device dummy dummy=1;size_mb=1;read_zero=1" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
             ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
@@ -247,7 +277,7 @@ SCSTTarget_start() {
     for ids in ${OCF_RESKEY_id}; do
         # Add dummy LUN 0 to the target if it is not already available.
         if [ ! -d "${FABRIC_BASE}/${ids}/luns/0" ]; then
-            echo "add dummy 0" >${FABRIC_BASE}/${ids}/luns/mgmt || {
+            scst_sysfs_write "add dummy 0" ${FABRIC_BASE}/${ids}/luns/mgmt || {
                 ocf_log err "Unable to add dummy LUN 0 to target ${OCF_RESKEY_id}.";
                 exit $OCF_ERR_GENERIC
             }
@@ -262,7 +292,7 @@ SCSTTarget_start() {
 
     # Enable this specific target
     for ids in ${OCF_RESKEY_id}; do
-        echo "1" >"${FABRIC_BASE}/${ids}/enabled" || {
+        scst_sysfs_write "1" "${FABRIC_BASE}/${ids}/enabled" || {
             ocf_log err "Unable to enable target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
@@ -270,7 +300,7 @@ SCSTTarget_start() {
     done
 
     # Be sure all Targets are finally enabled
-    echo "1" >"${FABRIC_BASE}/enabled" || {
+    scst_sysfs_write "1" "${FABRIC_BASE}/enabled" || {
         ocf_log err "Unable to enable ${OCF_RESKEY_fabric} fabric.";
         exit $OCF_ERR_GENERIC
     }
@@ -289,7 +319,7 @@ SCSTTarget_stop() {
                 # The target dir is not available? Consider it stopped.
                 if [ -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
                     # Disable the target to prevent new connections
-                    echo "0" >"${FABRIC_BASE}/${ids}/enabled" || {
+                    scst_sysfs_write "0" "${FABRIC_BASE}/${ids}/enabled" || {
                         ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
                         exit $OCF_ERR_GENERIC
                     }
@@ -297,12 +327,12 @@ SCSTTarget_stop() {
 
                     # Forcefully close all initiator sessions
                     for session in $(ls -1 "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions"); do
-                        echo 1 >"${session}/force_close"
+                        scst_sysfs_write 1 "${session}/force_close"
                         ocf_log warn "Forcefully closed session from initiator ${session}.";
                     done
 
                     # Delete the target
-                    echo "del_target ${OCF_RESKEY_id}" >${FABRIC_BASE}/mgmt || {
+                    scst_sysfs_write "del_target ${OCF_RESKEY_id}" ${FABRIC_BASE}/mgmt || {
                         ocf_log err "Unable to delete target ${OCF_RESKEY_id}.";
                         exit $OCF_ERR_GENERIC
                     }
@@ -330,7 +360,7 @@ SCSTTarget_stop() {
     # this type is configured.
     # Disable this type of fabric after its last target was disabled.
     if [ $(find ${FABRIC_BASE} -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 0 ]; then
-        echo "0" >"${FABRIC_BASE}/enabled" || {
+        scst_sysfs_write "0" "${FABRIC_BASE}/enabled" || {
             ocf_log err "Unable to disable fabric of type ${OCF_RESKEY_fabric}.";
             exit $OCF_ERR_GENERIC
         }
