@@ -379,20 +379,30 @@ SCSTTarget_monitor() {
     # check if the targets are globally disabled -
     # and if the sysfs entry is here at all.
     # in either case, consider ist stopped
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Check if fabric of type ${OCF_RESKEY_fabric} is loaded and enabled.";
     if [ -e ${FABRIC_BASE}/enabled ]; then
-        [ `cat ${FABRIC_BASE}/enabled` -eq 1 ] || return $OCF_NOT_RUNNING
+        [ `cat ${FABRIC_BASE}/enabled` -eq 1 ] || {
+            ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not enabled.";
+            return $OCF_NOT_RUNNING
+        }
     else
+        ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not loaded.";
         return $OCF_NOT_RUNNING
     fi
 
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Check if target(s) ${OCF_RESKEY_id} (type ${OCF_RESKEY_fabric}) is/are loaded and enabled.";
     # if we have no sysfs entry for the individual target,
     # it's definitely stopped.
     for ids in ${OCF_RESKEY_id}; do
-        [ -d ${FABRIC_BASE}/${ids} ] || (( index-- ))
+        [ -d ${FABRIC_BASE}/${ids} ] || {
+            (( index-- ));
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Target ${OCF_RESKEY_id} is not configured.";
+        }
     done
     # check if no target is here
     if [ $index -eq 0 ]; then
-         return $OCF_NOT_RUNNING
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: No target is configured.";
+        return $OCF_NOT_RUNNING
     fi
 
     # if the target is there, but it is not enabled, then
@@ -400,14 +410,19 @@ SCSTTarget_monitor() {
     for ids in ${OCF_RESKEY_id}; do
         path="${FABRIC_BASE}/${ids}/enable"
         if [ -e ${path} ]; then
-            [ `cat ${path}` -eq 1 ] || (( index-- ))
+            [ `cat ${path}` -eq 1 ] || {
+                (( index-- ));
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Target ${OCF_RESKEY_id} is disabled.";
+            }
         fi
     done
     # check if every single target is disabled
     if [ $index -eq 0 ]; then
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: All targets are disabled.";
         return $OCF_NOT_RUNNING
     fi
 
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Catch the only partly configured/enabled targets" ;
     # catch only partly configured target groups
     if [[ $index -ne ${#targets[@]} ]]; then
         case $__OCF_ACTION in
