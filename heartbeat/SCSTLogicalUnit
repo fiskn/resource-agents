@@ -566,27 +566,58 @@ SCSTLogicalUnit_reload() {
 }
 
 SCSTLogicalUnit_stop() {
+    local ini_path
+    local handler_path
+    local dev_path
     local target
+
+    handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
+    dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
+
     # If our backing device (or file) doesn't even exist, we're not running
-    [ -e ${OCF_RESKEY_path} ] || return $OCF_NOT_RUNNING
+    [ -e ${OCF_RESKEY_path} ] || {
+        ocf_log warn "Backing device (or file) ${OCF_RESKEY_path} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        exit $OCF_NOT_RUNNING
+    }
+
+    # If our device handler is not availabel we're not running
+    [ -e ${OCF_RESKEY_device_handler} ] || {
+        ocf_log warn "Device handler ${OCF_RESKEY_device_handler} not loaded - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        exit $OCF_NOT_RUNNING
+    }
 
     SCSTLogicalUnit_monitor
-    remove_master_score
     if [ $? -eq $OCF_SUCCESS ]; then
-        SCSTLogicalUnit_acls
         # Delete LUN for all its targets
         for target in ${OCF_RESKEY_target_id}; do
-	    case $OCF_RESKEY_fabric in
-	        iscsi)
-	            ocf_run lio_node --dellun=${target} 1 ${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
-                    ;;
-	        qla2xxx)
-                    echo -e "/qla2xxx/${target}/luns delete lun=${OCF_RESKEY_lun}\nexit\nexit" | targetcli
-                    ;;
-	    esac
+            ini_path="${FABRIC_BASE}/${target}/ini_groups"
+            # Check if the target is available
+            if [ ! -e "${FABRIC_BASE}/${target}" ]; then
+                ocf_log warn "Target ${OCF_RESKEY_target_id} not configured - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+                continue
+            fi
+
+            # Delete the initiator group (and all its ACLs)
+            if [ -e "${ini_path}/${OCF_RESOURCE_INSTANCE}" ]; then
+                scst_sysfs_write "del ${OCF_RESOURCE_INSTANCE}" ${ini_path}/mgmt || {
+                    ocf_log err "Unable to delete initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
+            fi
         done
-	ocf_run tcm_node --freedev=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} || exit $OCF_ERR_GENERIC
     fi
+
+    # Delete the device definition for LU
+    if [ -e "${dev_path}" ]; then
+        scst_sysfs_write "del_device ${OCF_RESOURCE_INSTANCE}" ${handler_path}/mgmt || {
+            ocf_log err "Unable to delete device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler."
+
+    remove_master_score
 
     return $OCF_SUCCESS
 }
