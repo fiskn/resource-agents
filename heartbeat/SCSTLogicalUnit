@@ -812,7 +812,7 @@ SCSTLogicalUnit_validate() {
 
     # Is the configured fabric supported?
     case "$OCF_RESKEY_fabric" in
-	"iscsi"|"qla2xxx")
+	"iscsi")
 	    ;;
 	*)
 	    ocf_log error "Unsupported SCST target fabric \"$OCF_RESKEY_fabric\"!"
@@ -838,7 +838,7 @@ SCSTLogicalUnit_validate() {
     local envar
     case $OCF_RESKEY_fabric in
 	iscsi)
-	    unsupported_params=""
+	    unsupported_params="alua_tpg"
 	    ;;
     esac
     for var in ${unsupported_params}; do
@@ -857,28 +857,26 @@ SCSTLogicalUnit_validate() {
     done
 
     if ! ocf_is_probe; then
-    # Do we have all required binaries?
+        # Do we have all required binaries?
 	case $OCF_RESKEY_fabric in
 	    iscsi)
-		check_binary tcm_node
-		check_binary lio_node
                 ;;
-	    qla2xxx)
-		check_binary tcm_node
-		check_binary targetcli
-		;;
 	esac
 
         # Is the required kernel functionality available?
 	case $OCF_RESKEY_fabric in
-	    iscsi|qla2xxx)
-		[ -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]
-		if [ $? -ne 0 ]; then
-		    ocf_log err "/sys/kernel/config/target/${OCF_RESKEY_fabric} does not exist or is not a directory -- check if required modules are loaded."
+	    iscsi)
+		[ -d "${FABRIC_BASE}" ] || {
+		    ocf_log err "${FABRIC_BASE} does not exist or is not a directory -- check if required modules are loaded.";
 		    exit $OCF_ERR_INSTALLED
-		fi
+                }
 		;;
 	esac
+
+	[ -d "${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}" ] || {
+	    ocf_log err "${OCF_RESKEY_device_handler} handler does not exist or is not a directory -- check if required modules are loaded.";
+	    exit $OCF_ERR_INSTALLED
+        }
     fi
 
     # We need the nodename several times.
@@ -910,9 +908,6 @@ SCSTLogicalUnit_validate
 case $__OCF_ACTION in
 start)		SCSTLogicalUnit_start;;
 stop)		SCSTLogicalUnit_stop;;
-promote)	SCSTLogicalUnit_promote;;
-demote)		SCSTLogicalUnit_demote;;
-notify)		SCSTLogicalUnit_notify;;
 monitor|status)	SCSTLogicalUnit_monitor;;
 reload)		ocf_log info "Reloading..."
 		SCSTLogicalUnit_reload
