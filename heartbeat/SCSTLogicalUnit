@@ -235,12 +235,43 @@ END
 }
 
 #######################################################################
+
 SCSTLogicalUnit_usage() {
 	cat <<END
 usage: $0 {start|stop|promote|demote|notify|status|monitor|reload|validate-all|meta-data}
 
 Expects to have a fully populated OCF RA-compliant environment set.
 END
+}
+
+# Read the SCST sysfs attribute $1. See also scst/README for more information.
+scst_sysfs_read() {
+    local EAGAIN val
+
+    EAGAIN="Resource temporarily unavailable"
+    while true; do
+        if val="$(LC_ALL=C cat "$1" 2>&1)"; then
+            echo -n "${val%\[key\]}"
+            return 0
+	elif [ "${val/*: }" != "$EAGAIN" ]; then
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+# Write $1 into the SCST sysfs attribute $2. See also scst/README for more
+# information.
+scst_sysfs_write() {
+    local EAGAIN status
+
+    EAGAIN="Resource temporarily unavailable"
+    if status="$(LC_ALL=C; (echo -n "$1" > "$2") 2>&1)"; then
+        return 0
+    elif [ "${status/*: }" != "$EAGAIN" ]; then
+        return 1
+    fi
+    scst_sysfs_read /sys/kernel/scst_tgt/last_sysfs_mgmt_res >/dev/null
 }
 
 update_alua_access_state() {
@@ -264,13 +295,12 @@ update_alua_access_state() {
     esac
 
     return $OCF_SUCCESS
-
 }
 
 update_master_score() {
     local score
     local index
-    declare -a tpgs=( $(echo ${OCF_RESKEY_lio_alua_tpg}) )
+    declare -a tpgs=( $(echo -n ${OCF_RESKEY_lio_alua_tpg}) )
     score=0
 
     # We have an array with all TPGs, the left most
@@ -320,12 +350,12 @@ SCSTLogicalUnit_acls() {
             monitor|start|reload)
                 # Add LUN acl if not already set
                 ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                for initiator in $(echo ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
+                for initiator in $(echo -n ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
                     acl_full_path="${acls_path}/${initiator}"
                     # Is the acl already in place?
                     if [ ! -e "${acl_full_path}" ]; then
                         # add the initiator id to the acl
-                        echo "add ${initiator}" >${acls_path}/mgmt || {
+                        scst_sysfs_write "add ${initiator}" ${acls_path}/mgmt || {
                             ocf_log err "Unable to add initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
                             exit $OCF_ERR_GENERIC
                         }
@@ -344,7 +374,7 @@ SCSTLogicalUnit_acls() {
                 for acl in ${acls_del[@]}; do
                     if [ -e "${acl_full_path}" ]; then
                         # remove the initiator from the acl
-                        echo "del ${initiator}" >${acls_path}/mgmt || {
+                        scst_sysfs_write "del ${initiator}" ${acls_path}/mgmt || {
                             ocf_log err "Unable to remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
                             exit $OCF_ERR_GENERIC
                         }
@@ -356,7 +386,7 @@ SCSTLogicalUnit_acls() {
                 # Clear the acls on stop of the lun.
                 ocf_log debug "Remove all initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
                 if [ -e "${acls_path}/mgmt" ]; then
-                    echo "clear" >${acls_path}/mgmt || {
+                    scst_sysfs_write "clear" ${acls_path}/mgmt || {
                         ocf_log err "Unable to remove all ACLs for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
                         exit $OCF_ERR_GENERIC
                     }
@@ -380,7 +410,7 @@ SCSTLogicalUnit_start() {
     local dev_path
     local target
     local tpg
-    declare -a tpgs=( $(echo ${OCF_RESKEY_alua_tpg}) )
+    declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
@@ -394,7 +424,7 @@ SCSTLogicalUnit_start() {
     # Configure the backend device for the LU, name the
     # device like the cluster resource.
     if [ ! -e "${dev_path}" ]; then
-        echo "add_device ${OCF_RESOURCE_INSTANCE} filename=${OCF_RESKEY_path}" >${handler_path}/mgmt || {
+        scst_sysfs_write "add_device ${OCF_RESOURCE_INSTANCE} filename=${OCF_RESKEY_path}" ${handler_path}/mgmt || {
             ocf_log err "Unable to add device ${OCF_RESOURCE_INSTANCE} with path ${OCF_RESKEY_path} to ${OCF_RESKEY_device_handler} handler.";
             exit $OCF_ERR_GENERIC
         }
@@ -403,7 +433,7 @@ SCSTLogicalUnit_start() {
 
     # Set the SCSI device id aka T10 device id
     if [ -n "${OCF_RESKEY_scsi_id}" ]; then
-        echo "${OCF_RESKEY_scsi_id}" >${dev_path}/t10_dev_id || {
+        scst_sysfs_write "${OCF_RESKEY_scsi_id}" ${dev_path}/t10_dev_id || {
             ocf_log err "Unable to set T10 device id ${OCF_RESKEY_scsi_id} for device ${OCF_RESOURCE_INSTANCE}.";
             exit $OCF_ERR_GENERIC
         }
@@ -412,7 +442,7 @@ SCSTLogicalUnit_start() {
 
     # Set the SCSI device serial number aka unit serial number
     if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
-        echo "${OCF_RESKEY_scsi_sn}" >${dev_path}/usn || {
+        scst_sysfs_write "${OCF_RESKEY_scsi_sn}" ${dev_path}/usn || {
             ocf_log err "Unable to set usn ${OCF_RESKEY_scsi_sn} for device ${OCF_RESOURCE_INSTANCE}.";
             exit $OCF_ERR_GENERIC
         }
@@ -421,7 +451,7 @@ SCSTLogicalUnit_start() {
 
     # Set the SCSI vendor id
     if [ -n "${OCF_RESKEY_vendor_id}" ]; then
-        echo "${OCF_RESKEY_vendor_id}" >${dev_path}/t10_vend_id || {
+        scst_sysfs_write "${OCF_RESKEY_vendor_id}" ${dev_path}/t10_vend_id || {
             ocf_log err "Unable to set usn ${OCF_RESKEY_vendor_id} for device ${OCF_RESOURCE_INSTANCE}.";
             exit $OCF_ERR_GENERIC
         }
@@ -433,7 +463,7 @@ SCSTLogicalUnit_start() {
         name=${param%=*}
         value=${param#*=}
         if [ -e ${dev_path}/${name} ]; then
-            echo "${value}" >"${dev_path}/${name}" || exit $OCF_ERR_GENERIC
+            scst_sysfs_write "${value}" "${dev_path}/${name}" || exit $OCF_ERR_GENERIC
         else
             ocf_log warn "Unsupported ${OCF_RESKEY_device_handler} device parameter ${name}: will be ignored."
         fi
@@ -442,7 +472,8 @@ SCSTLogicalUnit_start() {
 
     # SCST advanced initiators access control.
     # 1. Create an empty initiator group for all targets
-    #    that will export this LU and add the LU
+    # 2. Add the allowed initiators to the group
+    # 3. Add the lun to the group
     for target in ${OCF_RESKEY_target_id}; do
         ini_path="${FABRIC_BASE}/${target}/ini_groups"
         # Check if the target is available
@@ -450,22 +481,33 @@ SCSTLogicalUnit_start() {
             ocf_log err "Target ${OCF_RESKEY_target_id} not configured.";
             exit $OCF_ERR_GENERIC
         fi
+
         # Create the initiator group, name it like the cluster resource.
         if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}" ]; then
-            echo "create ${OCF_RESOURCE_INSTANCE}" >${ini_path}/mgmt || {
+            scst_sysfs_write "create ${OCF_RESOURCE_INSTANCE}" ${ini_path}/mgmt || {
                 ocf_log err "Unable to create initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
                 exit $OCF_ERR_GENERIC
             }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
         fi
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
+
+        # Set the ACLs
+        if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+            SCSTLogicalUnit_acls || {
+                ocf_log err "Unable to set access restrictions to ${OCF_RESKEY_allowed_initiators} for initiator group ${OCF_RESOURCE_INSTANCE}, target ${target}.";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Restricted access to initiators ${OCF_RESKEY_allowed_initiators} for initiator group ${OCF_RESOURCE_INSTANCE}, target ${target}."
+        fi
+
         # Add the LU to the initiator group
         if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/${OCF_RESKEY_lun}" ]; then
-            echo "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" >${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/mgmt || {
+            scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" ${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/mgmt || {
                 ocf_log err "Unable to add lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
                 exit $OCF_ERR_GENERIC
             }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
         fi
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
     done
 
     # For ALUA, create the target port group name for this lun
@@ -493,17 +535,14 @@ SCSTLogicalUnit_start() {
                     lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
                     # Do it manually and not with tcm_node, to also
                     # work with FC
-                    echo ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
+                    echo -n ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
                 fi
             done
         done
     fi
 
-    if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
-        SCSTLogicalUnit_acls || exit $OCF_ERR_GENERIC
-    fi
-
     ocf_is_ms && update_master_score
+
     return $OCF_SUCCESS
 }
 
@@ -552,7 +591,7 @@ SCSTLogicalUnit_monitor() {
 
     cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
     alua_state=2
-    declare -a ids=( $(echo ${OCF_RESKEY_target_id}) )
+    declare -a ids=( $(echo -n ${OCF_RESKEY_target_id}) )
     index=${#ids[@]}
     # Check all targets
     for target in ${OCF_RESKEY_target_id}; do
