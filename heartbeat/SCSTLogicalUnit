@@ -449,6 +449,15 @@ SCSTLogicalUnit_start() {
     fi
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set SCSI serial number to ${OCF_RESKEY_scsi_sn}."
 
+    # Set the SCSI product id
+    if [ -n "${OCF_RESKEY_product_id}" ]; then
+        scst_sysfs_write "${OCF_RESKEY_product_id}" ${dev_path}/prod_id || {
+            ocf_log err "Unable to set product id ${OCF_RESKEY_product_id} for device ${OCF_RESOURCE_INSTANCE}.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set vendor id to ${OCF_RESKEY_vendor_id}."
+
     # Set the SCSI vendor id
     if [ -n "${OCF_RESKEY_vendor_id}" ]; then
         scst_sysfs_write "${OCF_RESKEY_vendor_id}" ${dev_path}/t10_vend_id || {
