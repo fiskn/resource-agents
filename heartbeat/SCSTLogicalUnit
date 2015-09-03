@@ -296,33 +296,33 @@ remove_master_score() {
 
 SCSTLogicalUnit_acls() {
     declare -a acls_del
-    local acls_del
-    local acl_full_path
-    local acls_path
-    local acl_node
     local acl
+    local acls_path
+    local acl_full_path
+    local initiator
     local target
 
     # Adjust acls for all targets this LUN is associated to
     for target in ${OCF_RESKEY_target_id}; do
-        acls_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/acls"
+        acls_path="${FABRIC_BASE}/${target}/ini_groups/${OCF_RESOURCE_INSTANCE}/initiators"
         # Get all existing acls for this LUN, fill it in an array.
-        acls_del=( $(ls -1d ${acls_path}/*/lun_${OCF_RESKEY_lun} 2>/dev/null | tr '\n' ' ') )
+        acls_del=( $(ls -1 ${acls_path}/ 2>/dev/null | grep -Ev '^mgmt$' | tr '\n' ' ') )
 
         # Only need to add acls on start,monitor or reload
         case $__OCF_ACTION in
             monitor|start|reload)
                 # Add LUN acl if not already set
-                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}"
+                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
                 for initiator in $(echo ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
-                    acl_full_path="${acls_path}/${initiator}/lun_${OCF_RESKEY_lun}"
+                    acl_full_path="${acls_path}/${initiator}"
                     # Is the acl already in place?
-                    if [[ ! -d "${acl_full_path}" ]]; then
-                        # What "lio_node --addlunacl" does
-                        # for iSCSI works also for qla2xxx
-                        mkdir -p ${acl_full_path} && \
-                        ln -sf ${acls_path}/../lun/lun_${OCF_RESKEY_lun} \
-                        ${acl_full_path}/lun_${OCF_RESKEY_lun} || exit $OCF_ERR_GENERIC
+                    if [ ! -e "${acl_full_path}" ]; then
+                        # add the initiator id to the acl
+                        echo "add ${initiator}" >${acls_path}/mgmt || {
+                            ocf_log err "Unable to add initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "Allow initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
                     fi
                     # Remove valid acls from "clean-them-up"-array.
                     for index in ${!acls_del[@]}; do
@@ -332,25 +332,30 @@ SCSTLogicalUnit_acls() {
                         fi
                     done
                 done
+                # Check if there is an acl for the current LUN, that is not allowed.
+                ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
+                for acl in ${acls_del[@]}; do
+                    if [ -e "${acl_full_path}" ]; then
+                        # remove the initiator from the acl
+                        echo "del ${initiator}" >${acls_path}/mgmt || {
+                            ocf_log err "Unable to remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "Remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
+                    fi
+                done
+            ;;
+            stop)
+                # Clear the acls on stop of the lun.
+                ocf_log debug "Remove all initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
+                if [ -e "${acls_path}/mgmt" ]; then
+                    echo "clear" >${acls_path}/mgmt || {
+                        ocf_log err "Unable to remove all ACLs for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                fi
             ;;
         esac
-        # Check if there is an acl for the current LUN, that is
-        # not allowed. On "stop" all acls are deleted for this LUN.
-        ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}"
-        for acl in ${acls_del[@]}; do
-            if [[ -d ${acl} ]]; then
-                # Removing the lun subdir, has the same effect
-                # as lio_node --dellunacl.
-                rm -f ${acl}/lun_${OCF_RESKEY_lun} && rmdir ${acl} || exit $OCF_ERR_GENERIC
-            fi
-            # Delete node-acl if no more lun assignments are remaining
-            acl_node=${acl%/*}
-            if [[ ! $(ls -d ${acl_node}/lun_* 2>/dev/null) ]]; then
-                ocf_log debug "No more lun acls for initiator ${acl_node##*/}, delete node acl"
-                rmdir ${acl_node}
-                [[ -d ${acl_node} ]] && exit $OCF_ERR_GENERIC
-            fi
-        done
     done
 
     return $OCF_SUCCESS
