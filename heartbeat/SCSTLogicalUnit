@@ -567,24 +567,7 @@ SCSTLogicalUnit_reload() {
 
 SCSTLogicalUnit_stop() {
     local ini_path
-    local handler_path
-    local dev_path
     local target
-
-    handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
-    dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
-
-    # If our backing device (or file) doesn't even exist, we're not running
-    [ -e ${OCF_RESKEY_path} ] || {
-        ocf_log warn "Backing device (or file) ${OCF_RESKEY_path} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-        exit $OCF_NOT_RUNNING
-    }
-
-    # If our device handler is not available we're not running
-    [ -e ${OCF_RESKEY_device_handler} ] || {
-        ocf_log warn "Device handler ${OCF_RESKEY_device_handler} not loaded - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-        exit $OCF_NOT_RUNNING
-    }
 
     SCSTLogicalUnit_monitor
     if [ $? -eq $OCF_SUCCESS ]; then
@@ -610,7 +593,7 @@ SCSTLogicalUnit_stop() {
 
     # Delete the device definition for LU
     if [ -e "${dev_path}" ]; then
-        scst_sysfs_write "del_device ${OCF_RESOURCE_INSTANCE}" ${handler_path}/mgmt || {
+        scst_sysfs_write "del_device ${OCF_RESOURCE_INSTANCE}" ${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}/mgmt || {
             ocf_log err "Unable to delete device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler.";
             exit $OCF_ERR_GENERIC
         }
@@ -635,6 +618,24 @@ SCSTLogicalUnit_monitor() {
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
     alua_state=2
     index=${#ids[@]}
+
+    # If our backing device (or file) doesn't even exist, we're not running
+    [ -e ${OCF_RESKEY_path} ] || {
+        ocf_log warn "Backing device (or file) ${OCF_RESKEY_path} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        exit $OCF_NOT_RUNNING
+    }
+
+    # If our device handler is not available we're not running
+    [ -e ${handler_path} ] || {
+        ocf_log warn "Device handler ${OCF_RESKEY_device_handler} not loaded - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        exit $OCF_NOT_RUNNING
+    }
+
+    # If our device is not configured we're not running
+    [ -e ${dev_path} ] || {
+        ocf_log warn "Device ${OCF_RESOURCE_INSTANCE} of type ${OCF_RESKEY_device_handler} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        exit $OCF_NOT_RUNNING
+    }
 
     # Check all targets
     for target in ${OCF_RESKEY_target_id}; do
