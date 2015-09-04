@@ -300,7 +300,7 @@ update_alua_access_state() {
 update_master_score() {
     local score
     local index
-    declare -a tpgs=( $(echo -n ${OCF_RESKEY_lio_alua_tpg}) )
+    declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
     score=0
 
     # We have an array with all TPGs, the left most
@@ -521,7 +521,7 @@ SCSTLogicalUnit_start() {
 
     # For ALUA, create the target port group name for this lun
     # and assign the group to the lun
-    if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+    if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
         for (( index = 0; index < ${#tpgs[@]}; index++ )); do
             lun_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua"
             # Only add the ALUATPG if it does not already exist,
@@ -623,22 +623,24 @@ SCSTLogicalUnit_stop() {
 }
 
 SCSTLogicalUnit_monitor() {
-    local cfgfs_path_lun
-    local cfgfs_path_core
     local alua_state
+    local lun_path
+    local handler_path
+    local dev_path
     local target
     local index
-
-    cfgfs_path_core="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/udev_path"
-    alua_state=2
     declare -a ids=( $(echo -n ${OCF_RESKEY_target_id}) )
+
+    handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
+    dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
+    alua_state=2
     index=${#ids[@]}
+
     # Check all targets
     for target in ${OCF_RESKEY_target_id}; do
-        cfgfs_path_lun="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE}/udev_path"
-        if [ -e ${cfgfs_path_lun} ]  && [ `cat ${cfgfs_path_lun}` = "${OCF_RESKEY_path}" ]  && \
-           [ -e ${cfgfs_path_core} ] && [ `cat ${cfgfs_path_core}` = "${OCF_RESKEY_path}" ]; then
-                (( index-- ))
+        lun_path="${FABRIC_BASE}/${target}/ini_groups/${OCF_RESOURCE_INSTANCE}/luns/${OCF_RESKEY_lun}/device"
+        if [ -e ${lun_path} ]  && [ `scst_sysfs_read "${lun_path}/filename"` = "${OCF_RESKEY_path}" ]; then
+            (( index-- ))
         fi
     done
 
@@ -647,7 +649,7 @@ SCSTLogicalUnit_monitor() {
         SCSTLogicalUnit_acls || exit $?
 
         # Now check the ALUA state
-        if [ -n "${OCF_RESKEY_lio_alua_tpg}" ]; then
+        if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
             alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$HOSTNAME/alua_access_state)"
             case $alua_state in
                 0)
@@ -670,7 +672,7 @@ SCSTLogicalUnit_monitor() {
     if [[ $index -ne ${#ids[@]} ]]; then
         case $__OCF_ACTION in
             monitor|start)
-                ocf_log error "lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} is not associated correctly to all its targets!"
+                ocf_log error "${OCF_RESOURCE_INSTANCE}/LUN ${OCF_RESKEY_lun} with path/file ${OCF_RESKEY_path} is not associated correctly to all its targets!"
                 remove_master_score
                 exit $OCF_ERR_GENERIC
                 ;;
@@ -821,8 +823,8 @@ SCSTLogicalUnit_validate() {
     esac
 
     # Is there an ALUA TPG defined for each target this LUN is attached to?
-    if [ -n "${OCF_RESKEY_lio_alua_tpg}" ] && [ "$__OCF_ACTION" != "stop" ]; then
-        declare -a nrtpg=( ${OCF_RESKEY_lio_alua_tpg} )
+    if [ -n "${OCF_RESKEY_alua_tpg}" ] && [ "$__OCF_ACTION" != "stop" ]; then
+        declare -a nrtpg=( ${OCF_RESKEY_alua_tpg} )
         declare -a nrids=( ${OCF_RESKEY_target_id} )
 
         if [ ${#nrtpg[@]} -ne ${#nrids[@]} ]; then
