@@ -33,6 +33,28 @@ OCF_RESKEY_fabric_default="iscsi"
 OCF_RESKEY_iscsi_portals_default="0.0.0.0"
 : ${OCF_RESKEY_iscsi_portals=${OCF_RESKEY_iscsi_portals_default}}
 
+# for debugging this RA
+DEBUG_LOG_DIR=/tmp/SCSTTarget.ocf.ra.debug
+DEBUG_LOG=$DEBUG_LOG_DIR/${OCF_RESOURCE_INSTANCE}.log
+USE_DEBUG_LOG=false
+ls_stat_is_dir_0700_root() {
+    set -- $(command ls -ldn "$1" 2>/dev/null);
+    [[ $1/$3 = drwx?-??-?/0 ]]
+}
+# try to avoid symlink vuln.
+if ls_stat_is_dir_0700_root $DEBUG_LOG_DIR &&
+    [[ -w "$DEBUG_LOG" && ! -L "$DEBUG_LOG" ]]
+then
+    USE_DEBUG_LOG=true
+    exec 9>>"$DEBUG_LOG"
+    date >&9
+    echo "$*" >&9
+    env | grep OCF_ | sort >&9
+else
+    exec 9>/dev/null
+fi
+# end of debugging aid
+
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
