@@ -122,7 +122,7 @@ The Logical Unit number (LUN) exposed to initiators.
 <content type="integer" />
 </parameter>
 
-<parameter name="path" required="1" unique="0">
+<parameter name="path" required="1" unique="1">
 <longdesc lang="en">
 The path to the block device or file to be exposed.
 </longdesc>
@@ -166,7 +166,7 @@ The SCSI vendor ID to be configured for this Logical Unit.
 <content type="string" default="${OCF_RESKEY_vendor_id_default}"/>
 </parameter>
 
-<parameter name="product_id" required="0" unique="0">
+<parameter name="product_id" required="0" unique="1">
 <longdesc lang="en">
 The SCSI product ID to be configured for this Logical Unit.
 </longdesc>
