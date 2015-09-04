@@ -268,8 +268,8 @@ SCSTTarget_start() {
 
     # SCST targets must have a LUN 0 - create a dummy on target creation.
     # Put LUN 0 in the target default group.
-    if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy" ]; then
-        scst_sysfs_write "add_device dummy dummy=1;size_mb=1;read_zero=1" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+    if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy_${OCF_RESKEY_fabric}" ]; then
+        scst_sysfs_write "add_device dummy_${OCF_RESKEY_fabric} dummy=1;size_mb=1;read_zero=1" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
             ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
@@ -277,13 +277,13 @@ SCSTTarget_start() {
     for ids in ${OCF_RESKEY_id}; do
         # Add dummy LUN 0 to the target if it is not already available.
         if [ ! -d "${FABRIC_BASE}/${ids}/luns/0" ]; then
-            scst_sysfs_write "add dummy 0" ${FABRIC_BASE}/${ids}/luns/mgmt || {
+            scst_sysfs_write "add dummy_${OCF_RESKEY_fabric} 0" ${FABRIC_BASE}/${ids}/luns/mgmt || {
                 ocf_log err "Unable to add dummy LUN 0 to target ${OCF_RESKEY_id}.";
                 exit $OCF_ERR_GENERIC
             }
         fi
-        # Check if LUN 0 is exported but is _not_ our dummy device
-        [ "$(cat ${FABRIC_BASE}/${ids}/luns/0/device/prod_id 2>/dev/null)" = "dummy" ] || {
+       # Check if LUN 0 is exported but is _not_ our dummy device
+        [ "$(scst_sysfs_read ${FABRIC_BASE}/${ids}/luns/0/device/prod_id)" = "dummy_${OCF_RESKEY_fabric}" ] || {
             ocf_log err "The LUN 0 exported in the default group of target ${OCF_RESKEY_id} is not the expected dummy device.";
             exit $OCF_ERR_GENERIC
         }
@@ -358,13 +358,23 @@ SCSTTarget_stop() {
     fi
     # If there is no subdirectory in the fabric base dir, no target of
     # this type is configured.
-    # Disable this type of fabric after its last target was disabled.
+    # Disable this type of fabric after its last target was disabled,
+    # and cleanup the dummy device.
     if [ $(find ${FABRIC_BASE} -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 0 ]; then
+        # Delete the device definition for dummy lun 0
+        if [ -e "${SCST_BASE}/handlers/vdisk_nullio/dummy_${OCF_RESKEY_fabric}" ]; then
+            scst_sysfs_write "del_device dummy_${OCF_RESKEY_fabric}" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+                ocf_log err "Unable to delete dummy device dummy_${OCF_RESKEY_fabric} from vdisk_nullio handler.";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: removed dummy device dummy_${OCF_RESKEY_fabric} from ${OCF_RESKEY_fabric} fabric after last target was disabled."
+        fi
+        # Disable the fabric
         scst_sysfs_write "0" "${FABRIC_BASE}/enabled" || {
             ocf_log err "Unable to disable fabric of type ${OCF_RESKEY_fabric}.";
             exit $OCF_ERR_GENERIC
         }
-    ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
     fi
 
     return $OCF_SUCCESS
