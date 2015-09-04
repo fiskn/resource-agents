@@ -333,7 +333,6 @@ remove_master_score() {
 
 SCSTLogicalUnit_acls() {
     declare -a acls_del
-    local acl
     local acls_path
     local acl_full_path
     local initiator
@@ -363,7 +362,7 @@ SCSTLogicalUnit_acls() {
                     fi
                     # Remove valid acls from "clean-them-up"-array.
                     for index in ${!acls_del[@]}; do
-                        if [ "${acls_del[$index]}" = "$acl_full_path" ]; then
+                        if [ "${acls_path}/${acls_del[$index]}" = "$acl_full_path" ]; then
                         unset acls_del[$index]
                             break
                         fi
@@ -371,8 +370,8 @@ SCSTLogicalUnit_acls() {
                 done
                 # Check if there is an acl for the current LUN, that is not allowed.
                 ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                for acl in ${acls_del[@]}; do
-                    if [ -e "${acl_full_path}" ]; then
+                for initiator in ${acls_del[@]}; do
+                    if [ -e "${acls_path}/${initiator}" ]; then
                         # remove the initiator from the acl
                         scst_sysfs_write "del ${initiator}" ${acls_path}/mgmt || {
                             ocf_log err "Unable to remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
