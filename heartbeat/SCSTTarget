@@ -327,7 +327,7 @@ SCSTTarget_stop() {
 
                     # Forcefully close all initiator sessions
                     for session in $(ls -1 "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions"); do
-                        scst_sysfs_write 1 "${session}/force_close"
+                        scst_sysfs_write "1" "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions/${session}/force_close"
                         ocf_log warn "Forcefully closed session from initiator ${session}.";
                     done
 
