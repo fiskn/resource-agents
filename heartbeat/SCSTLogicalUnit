@@ -140,7 +140,7 @@ vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio
 <content type="string" default="${OCF_RESKEY_device_handler_default}"/>
 </parameter>
 
-rameter name="scsi_id" required="0" unique="1">
+<parameter name="scsi_id" required="0" unique="1">
 <longdesc lang="en">
 The SCSI ID to be configured for this Logical Unit. The default
 is the resource name, truncated to 24 bytes.
@@ -580,7 +580,7 @@ SCSTLogicalUnit_stop() {
         exit $OCF_NOT_RUNNING
     }
 
-    # If our device handler is not availabel we're not running
+    # If our device handler is not available we're not running
     [ -e ${OCF_RESKEY_device_handler} ] || {
         ocf_log warn "Device handler ${OCF_RESKEY_device_handler} not loaded - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
         exit $OCF_NOT_RUNNING
