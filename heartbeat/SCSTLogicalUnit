@@ -55,7 +55,7 @@ OCF_RESKEY_scsi_sn_default=${sn:0:8}
 
 # for debugging this RA
 DEBUG_LOG_DIR=/tmp/SCSTLogicalUnit.ocf.ra.debug
-DEBUG_LOG=$DEBUG_LOG_DIR/log
+DEBUG_LOG=$DEBUG_LOG_DIR/${OCF_RESOURCE_INSTANCE}.log
 USE_DEBUG_LOG=false
 ls_stat_is_dir_0700_root() {
     set -- $(command ls -ldn "$1" 2>/dev/null);
