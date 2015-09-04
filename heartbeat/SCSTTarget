@@ -269,10 +269,12 @@ SCSTTarget_start() {
     # SCST targets must have a LUN 0 - create a dummy on target creation.
     # Put LUN 0 in the target default group.
     if [ ! -L "${SCST_BASE}/handlers/vdisk_nullio/dummy_${OCF_RESKEY_fabric}" ]; then
-        scst_sysfs_write "add_device dummy_${OCF_RESKEY_fabric} dummy=1;size_mb=1;read_zero=1" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
+        scst_sysfs_write "add_device dummy_${OCF_RESKEY_fabric} dummy=1;size_mb=1" ${SCST_BASE}/handlers/vdisk_nullio/mgmt || {
             ocf_log err "Unable to create dummy device for LUN 0 on target ${OCF_RESKEY_id}.";
             exit $OCF_ERR_GENERIC
         }
+        scst_sysfs_write "1" ${SCST_BASE}/handlers/vdisk_nullio/dummy_${OCF_RESKEY_fabric}/read_zero || \
+        ocf_log warn "Unable to enable read_zero option for dummy LUN 0 on target ${OCF_RESKEY_id}."
     fi
     for ids in ${OCF_RESKEY_id}; do
         # Add dummy LUN 0 to the target if it is not already available.
@@ -282,7 +284,7 @@ SCSTTarget_start() {
                 exit $OCF_ERR_GENERIC
             }
         fi
-       # Check if LUN 0 is exported but is _not_ our dummy device
+        # Check if LUN 0 is exported but is _not_ our dummy device
         [ "$(scst_sysfs_read ${FABRIC_BASE}/${ids}/luns/0/device/prod_id)" = "dummy_${OCF_RESKEY_fabric}" ] || {
             ocf_log err "The LUN 0 exported in the default group of target ${OCF_RESKEY_id} is not the expected dummy device.";
             exit $OCF_ERR_GENERIC
