@@ -591,7 +591,7 @@ SCSTLogicalUnit_stop() {
     fi
 
     # Delete the device definition for LU
-    if [ -e "${dev_path}" ]; then
+    if [ -e "${SCST_BASE}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
         scst_sysfs_write "del_device ${OCF_RESOURCE_INSTANCE}" ${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}/mgmt || {
             ocf_log err "Unable to delete device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler.";
             exit $OCF_ERR_GENERIC
