@@ -573,6 +573,7 @@ SCSTLogicalUnit_reload() {
 SCSTLogicalUnit_stop() {
     local ini_path
     local target
+    local initiator
 
     SCSTLogicalUnit_monitor
     if [ $? -eq $OCF_SUCCESS ]; then
@@ -585,14 +586,24 @@ SCSTLogicalUnit_stop() {
                 continue
             fi
 
-            # Delete the initiator group (and all its ACLs)
-            if [ -e "${ini_path}/${OCF_RESOURCE_INSTANCE}" ]; then
-                scst_sysfs_write "del ${OCF_RESOURCE_INSTANCE}" ${ini_path}/mgmt || {
-                    ocf_log err "Unable to delete initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
-                    exit $OCF_ERR_GENERIC
-                }
-                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
-            fi
+            # Unexport the lun for every initiator
+            for initiator in ${OCF_RESKEY_allowed_initiators};do
+                if [ -d "${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}" ]; then
+                    scst_sysfs_write "del ${OCF_RESKEY_lun}" "${ini_path}/${initiator}/luns/mgmt" || {
+                        ocf_log err "Unable to unexport lun ${OCF_RESKEY_lun} from initiator group ${initiator} for target ${target}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Unexported lun ${OCF_RESKEY_lun} from initiator group ${initiator} for target ${target}."
+                fi
+                # remove empty (or only exporting lun 0) ini_groups
+                if [ $(find ${${ini_path}/${initiator}/luns} -mindepth 1 -maxdepth 1 -type d ! -name '0' | wc -l) -eq 0 ] ; then
+                    scst_sysfs_write "del ${initiator}" ${ini_path}/mgmt || {
+                        ocf_log err "Unable to delete empty initiator group ${initiator} from target ${target}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted empty initiator group ${initiator} from target ${target}."
+                fi
+            done
         done
     fi
 
