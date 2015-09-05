@@ -818,6 +818,23 @@ SCSTLogicalUnit_validate() {
 	fi
     done
 
+    # Do we have a valid LUN?
+    # We always use dummy LUN 0
+    [ $OCF_RESKEY_lun -ge 1 ]
+    case $? in
+        0)
+            # OK
+            ;;
+        1)
+            ocf_log err "Invalid LUN $OCF_RESKEY_lun (must be greater than 0)."
+            exit $OCF_ERR_CONFIGURED
+            ;;
+        *)
+            ocf_log err "Invalid LUN $OCF_RESKEY_lun (must be an integer)."
+            exit $OCF_ERR_CONFIGURED
+            ;;
+    esac
+
     # Is the configured fabric supported?
     case "$OCF_RESKEY_fabric" in
 	"iscsi")
