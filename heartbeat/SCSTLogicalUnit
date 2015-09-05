@@ -37,7 +37,7 @@ OCF_RESKEY_vendor_id_default="STORCIUM"
 OCF_RESKEY_device_handler_default="vdisk_fileio"
 : ${OCF_RESKEY_device_handler=${OCF_RESKEY_device_handler_default}}
 # By default no initiator is allowed to access a LU
-OCF_RESKEY_allowed_initiators_default="!*"
+OCF_RESKEY_allowed_initiators_default=""
 : ${OCF_RESKEY_allowed_initiators=${OCF_RESKEY_allowed_initiators_default}}
 
 # Use a default SCSI ID and SCSI SN that is unique across the cluster,
@@ -190,10 +190,6 @@ Allowed initiators. A space-separated list of initiators allowed to
 connect to this lun. Initiators may be listed in any syntax
 the target fabric allows. If this parameter is empty or
 not set, access to this lun will not be allowed from any initiator.
-
-Simple patterns can be used: '*' means match any number of any symbol,
-'?' means match only any single symbol. Use negative sign '!' to revert
-the value of the pattern.
 </longdesc>
 <shortdesc lang="en">List of initiators allowed to connect
 to this lun.</shortdesc>
