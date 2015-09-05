@@ -404,6 +404,7 @@ SCSTLogicalUnit_start() {
     local handler_path
     local dev_path
     local target
+    local initiator
     local tpg
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
 
@@ -486,32 +487,41 @@ SCSTLogicalUnit_start() {
             exit $OCF_ERR_GENERIC
         fi
 
-        # Create the initiator group, name it like the cluster resource.
-        if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}" ]; then
-            scst_sysfs_write "create ${OCF_RESOURCE_INSTANCE}" ${ini_path}/mgmt || {
-                ocf_log err "Unable to create initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
-        fi
+        # Create one initiator group per initiator.
+        for initiator in ${OCF_RESKEY_allowed_initiators}; do
+            if [ ! -d "${ini_path}/${initiator}" ]; then
+                scst_sysfs_write "create ${initiator}" ${ini_path}/mgmt || {
+                    ocf_log err "Unable to create initiator group ${initiator} for target ${target}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${initiator} for target ${target}."
+            fi
 
-        # Set the ACLs
-        if [ -n "${OCF_RESKEY_allowed_initiators}" ]; then
+            # Set the ACLs
             SCSTLogicalUnit_acls || {
-                ocf_log err "Unable to set access restrictions to ${OCF_RESKEY_allowed_initiators} for initiator group ${OCF_RESOURCE_INSTANCE}, target ${target}.";
+                ocf_log err "Unable to set access restrictions to ${initiator} for initiator group ${initiator}, target ${target}.";
                 exit $OCF_ERR_GENERIC
             }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Restricted access to initiators ${OCF_RESKEY_allowed_initiators} for initiator group ${OCF_RESOURCE_INSTANCE}, target ${target}."
-        fi
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Restricted access to initiator ${initiator} for initiator group ${initiator}, target ${target}."
 
-        # Add the LU to the initiator group
-        if [ ! -e "${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/${OCF_RESKEY_lun}" ]; then
-            scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" ${ini_path}/${OCF_RESOURCE_INSTANCE}/luns/mgmt || {
-                ocf_log err "Unable to add lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}.";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added lun ${OCF_RESKEY_lun} to initiator group ${OCF_RESOURCE_INSTANCE} for target ${target}."
-        fi
+            # Always add LUN 0 to the initiator group
+            if [ ! -d "${ini_path}/${initiator}/luns/0" ]; then
+                scst_sysfs_write "add dummy_${OCF_RESKEY_fabric} 0" ${ini_path}/${initiator}/luns/mgmt || {
+                    ocf_log err "Unable to add lun dummy_${OCF_RESKEY_fabric} to initiator group ${initiator} for target ${target}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added dummy_${OCF_RESKEY_fabric} lun 0 to initiator group ${initiator} for target ${target}."
+            fi
+
+            # Add the LU to the initiator group
+            if [ ! -d "${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}" ]; then
+                scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" ${ini_path}/${initiator}/luns/mgmt || {
+                    ocf_log err "Unable to add lun ${OCF_RESKEY_lun} to initiator group ${initiator} for target ${target}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added lun ${OCF_RESKEY_lun} to initiator group ${initiator} for target ${target}."
+            fi
+        done
     done
 
     # For ALUA, create the target port group name for this lun
