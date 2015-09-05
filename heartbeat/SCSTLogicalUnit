@@ -621,19 +621,19 @@ SCSTLogicalUnit_monitor() {
     # If our backing device (or file) doesn't even exist, we're not running
     [ -e ${OCF_RESKEY_path} ] || {
         ocf_log warn "Backing device (or file) ${OCF_RESKEY_path} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-        exit $OCF_NOT_RUNNING
+        return $OCF_NOT_RUNNING
     }
 
     # If our device handler is not available we're not running
     [ -e ${handler_path} ] || {
         ocf_log warn "Device handler ${OCF_RESKEY_device_handler} not loaded - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-        exit $OCF_NOT_RUNNING
+        return $OCF_NOT_RUNNING
     }
 
     # If our device is not configured we're not running
     [ -e ${dev_path} ] || {
-        ocf_log warn "Device ${OCF_RESOURCE_INSTANCE} of type ${OCF_RESKEY_device_handler} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-        exit $OCF_NOT_RUNNING
+        ocf_log debug "Device ${OCF_RESOURCE_INSTANCE} of type ${OCF_RESKEY_device_handler} not available - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
+        return $OCF_NOT_RUNNING
     }
 
     # Check all targets
