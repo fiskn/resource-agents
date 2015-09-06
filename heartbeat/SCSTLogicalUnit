@@ -48,6 +48,7 @@ OCF_RESKEY_allowed_initiators_default=""
 sn=`echo -n "${OCF_RESKEY_target_id} ${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
 OCF_RESKEY_scsi_id_default="${sn:0:24}"
 : ${OCF_RESKEY_scsi_id=${OCF_RESKEY_scsi_id_default}}
+: ${OCF_RESKEY_vendor_specific_id=${OCF_RESKEY_scsi_id}}
 # To have a reasonably unique default SCSI SN, use the first 8 bytes
 # of an MD5 hash of of $OCF_RESOURCE_INSTANCE
 OCF_RESKEY_scsi_sn_default=${sn:0:8}
@@ -169,12 +170,13 @@ The SCSI vendor ID to be configured for this Logical Unit.
 <content type="string" default="${OCF_RESKEY_vendor_id_default}"/>
 </parameter>
 
-<parameter name="product_id" required="0" unique="1">
+<parameter name="vendor_specific_id" required="0" unique="1">
 <longdesc lang="en">
-The SCSI product ID to be configured for this Logical Unit.
+The SCSI vendor specific ID to be configured for this Logical Unit.
+It defaults to the same value as the SCSI serial id.
 </longdesc>
-<shortdesc lang="en">SCSI product ID</shortdesc>
-<content type="string" />
+<shortdesc lang="en">SCSI vendor specific ID</shortdesc>
+<content type="string" default="${OCF_RESKEY_scsi_id_default}"/>
 </parameter>
 
 <parameter name="additional_parameters" required="0" unique="1">
@@ -508,6 +510,15 @@ SCSTLogicalUnit_start() {
         }
     fi
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set SCSI device id to ${OCF_RESKEY_scsi_id}."
+
+    # Set the SCSI vendor specific id
+    if [ -n "${OCF_RESKEY_vendor_specific_id}" ]; then
+        scst_sysfs_write "${OCF_RESKEY_vendor_specific_id}" ${dev_path}/vend_specific_id || {
+            ocf_log err "Unable to set vendor specific id ${OCF_RESKEY_vendor_specific_id} for device ${OCF_RESOURCE_INSTANCE}.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set SCSI vendor specific id to ${OCF_RESKEY_vendor_specific_id}."
 
     # Set the SCSI device serial number aka unit serial number
     if [ -n "${OCF_RESKEY_scsi_sn}" ]; then
