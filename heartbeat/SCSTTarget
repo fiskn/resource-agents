@@ -66,8 +66,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.0.3">
-<version>0.0.3</version>
+<resource-agent name="SCSTTarget" version="0.1.0">
+<version>0.1.0</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
@@ -242,7 +242,7 @@ SCSTTarget_start() {
             # Define allowed portals
             if [ "${OCF_RESKEY_iscsi_portals}" != "${OCF_RESKEY_iscsi_portals_default}" ]; then
                 for portal in ${OCF_RESKEY_iscsi_portals}; do
-                   if ! grep -qE "^${portal}$" ${FABRIC_BASE}/${OCF_RESKEY_id}/allowed_portal* 2>/dev/null ; then
+                   if ! grep -qE "${portal}$" ${FABRIC_BASE}/${OCF_RESKEY_id}/allowed_portal* ; then
                        scst_sysfs_write "add_target_attribute ${OCF_RESKEY_id} allowed_portal ${portal}" ${FABRIC_BASE}/mgmt || {
                            ocf_log err "Unable to set allowed portal ${portal} on target ${OCF_RESKEY_id}.";
                            exit $OCF_ERR_GENERIC
