@@ -417,10 +417,19 @@ SCSTLogicalUnit_start() {
     local target
     local initiator
     local tpg
+    local param
+    local all_params
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
+
+    # Set all additional parameters
+    all_params=""
+    for param in ${OCF_RESKEY_additional_parameters}; do
+        all_params="${all_params}; ${param}"
+    done
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Prepared specific parameter \"${all_params}\" for device handler ${OCF_RESKEY_device_handler}."
 
     # Check if handler is loaded
     if [ ! -e "${handler_path}" ]; then
@@ -431,7 +440,7 @@ SCSTLogicalUnit_start() {
     # Configure the backend device for the LU, name the
     # device like the cluster resource.
     if [ ! -e "${dev_path}" ]; then
-        scst_sysfs_write "add_device ${OCF_RESOURCE_INSTANCE} filename=${OCF_RESKEY_path}" ${handler_path}/mgmt || {
+        scst_sysfs_write "add_device ${OCF_RESOURCE_INSTANCE} filename=${OCF_RESKEY_path}${all_params}" ${handler_path}/mgmt || {
             ocf_log err "Unable to add device ${OCF_RESOURCE_INSTANCE} with path ${OCF_RESKEY_path} to ${OCF_RESKEY_device_handler} handler.";
             exit $OCF_ERR_GENERIC
         }
@@ -474,17 +483,6 @@ SCSTLogicalUnit_start() {
     fi
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set vendor id to ${OCF_RESKEY_vendor_id}."
 
-    # Set all additional parameters
-    for param in ${OCF_RESKEY_additional_parameters}; do
-        name=${param%=*}
-        value=${param#*=}
-        if [ -e ${dev_path}/${name} ]; then
-            scst_sysfs_write "${value}" "${dev_path}/${name}" || exit $OCF_ERR_GENERIC
-        else
-            ocf_log warn "Unsupported ${OCF_RESKEY_device_handler} device parameter ${name}: will be ignored."
-        fi
-    done
-    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Tried to set specific parameter ${OCF_RESKEY_additional_parameters} for device handler ${OCF_RESKEY_device_handler}."
 
     # SCST advanced initiators access control.
     # 1. Create an empty initiator group for all targets
