@@ -147,7 +147,7 @@ vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio
 <parameter name="scsi_id" required="0" unique="1">
 <longdesc lang="en">
 The SCSI ID to be configured for this Logical Unit. The default
-is the resource name, truncated to 24 bytes.
+is a hash of the target id and the resource name, truncated to 24 bytes.
 </longdesc>
 <shortdesc lang="en">SCSI ID</shortdesc>
 <content type="string" default="${OCF_RESKEY_scsi_id_default}"/>
@@ -156,13 +156,22 @@ is the resource name, truncated to 24 bytes.
 <parameter name="scsi_sn" required="0" unique="1">
 <longdesc lang="en">
 The SCSI serial number to be configured for this Logical Unit.
-The default is a hash of the resource name, truncated to 8 bytes.
+The default is a hash of the target id and the resource name,
+truncated to 8 bytes.
 </longdesc>
 <shortdesc lang="en">SCSI serial number</shortdesc>
 <content type="string" default="${OCF_RESKEY_scsi_sn_default}"/>
 </parameter>
 
-<parameter name="vendor_id" required="0" unique="0">
+<parameter name="product_id" required="0" unique="1">
+<longdesc lang="en">
+The SCSI product ID to be configured for this Logical Unit.
+</longdesc>
+<shortdesc lang="en">SCSI product ID</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="vendor_id" required="0" unique="1">
 <longdesc lang="en">
 The SCSI vendor ID to be configured for this Logical Unit.
 </longdesc>
