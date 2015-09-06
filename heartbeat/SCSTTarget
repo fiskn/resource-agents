@@ -336,32 +336,36 @@ SCSTTarget_start() {
 SCSTTarget_stop() {
     local rc
     local session
+    local ids
+
     SCSTTarget_monitor
     if [ $? =  $OCF_SUCCESS ]; then
 	case $OCF_RESKEY_fabric in
 	    iscsi)
-                # The target dir is not available? Consider it stopped.
-                if [ -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
-                    # Disable the target to prevent new connections
-                    scst_sysfs_write "0" "${FABRIC_BASE}/${ids}/enabled" || {
-                        ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
-                        exit $OCF_ERR_GENERIC
-                    }
-                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Disabled iSCSI target ${OCF_RESKEY_id}"
+                for ids in ${OCF_RESKEY_id}; do
+                    # The target dir is not available? Consider it stopped.
+                    if [ -d "${FABRIC_BASE}/${ids}" ]; then
+                        # Disable the target to prevent new connections
+                        scst_sysfs_write "0" "${FABRIC_BASE}/${ids}/enabled" || {
+                            ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Disabled iSCSI target ${OCF_RESKEY_id}"
 
-                    # Forcefully close all initiator sessions
-                    for session in $(ls -1 "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions"); do
-                        scst_sysfs_write "1" "${FABRIC_BASE}/${OCF_RESKEY_id}/sessions/${session}/force_close"
-                        ocf_log warn "Forcefully closed session from initiator ${session}.";
-                    done
+                        # Forcefully close all initiator sessions
+                        for session in $(ls -1 "${FABRIC_BASE}/${ids}/sessions"); do
+                            scst_sysfs_write "1" "${FABRIC_BASE}/${ids}/sessions/${session}/force_close"
+                            ocf_log warn "Forcefully closed session from initiator ${session}.";
+                        done
 
-                    # Delete the target
-                    scst_sysfs_write "del_target ${OCF_RESKEY_id}" ${FABRIC_BASE}/mgmt || {
-                        ocf_log err "Unable to delete target ${OCF_RESKEY_id}.";
-                        exit $OCF_ERR_GENERIC
-                    }
-                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} deleted"
-                fi
+                        # Delete the target
+                        scst_sysfs_write "del_target ${ids}" ${FABRIC_BASE}/mgmt || {
+                            ocf_log err "Unable to delete target ${ids}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${ids} deleted"
+                    fi
+                done
 		;;
 	    qla2xxx)
                 # Unfortunately older targetcli has no meaningfull
