@@ -78,6 +78,9 @@ fi
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
+
+# Lockfile, for LUs starting in parallel
+LOCKFILE=${HA_RSCTMP}/SCSTLogicalUnit.lock
 #######################################################################
 
 meta_data() {
@@ -334,7 +337,14 @@ SCSTLogicalUnit_acls() {
     local initiator
     local target
 
-    # Adjust acls for all targets this LUN is associated to
+    # Don't manipulate anything during a probe
+    ocf_is_probe && return $OCF_SUCCESS
+
+    # Wait for the lock to manage lun exports and
+    # ini_groups.
+    ocf_take_lock $LOCKFILE
+    ocf_release_lock_on_exit $LOCKFILE
+
     for target in ${OCF_RESKEY_target_id}; do
         acls_path="${FABRIC_BASE}/${target}/ini_groups/${OCF_RESOURCE_INSTANCE}/initiators"
         # Get all existing acls for this LUN, fill it in an array.
