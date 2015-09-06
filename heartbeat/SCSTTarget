@@ -58,6 +58,8 @@ fi
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
+# Lockfile, to prevent races on multi-target setups
+LOCKFILE=${HA_RSCTMP}/SCSTTarget.lock
 #######################################################################
 
 meta_data() {
@@ -212,6 +214,10 @@ SCSTTarget_start() {
       ocf_log debug "${OCF_RESOURCE_INSTANCE}: ${mod} module loaded."
     done
 
+    # Wait for the lock to manage targets
+    ocf_take_lock $LOCKFILE
+    ocf_release_lock_on_exit $LOCKFILE
+
     # Create the target and portals
     case ${OCF_RESKEY_fabric} in
         iscsi)
@@ -340,6 +346,10 @@ SCSTTarget_stop() {
 
     SCSTTarget_monitor
     if [ $? =  $OCF_SUCCESS ]; then
+        # Wait for the lock to manage targets
+        ocf_take_lock $LOCKFILE
+        ocf_release_lock_on_exit $LOCKFILE
+     
 	case $OCF_RESKEY_fabric in
 	    iscsi)
                 for ids in ${OCF_RESKEY_id}; do
