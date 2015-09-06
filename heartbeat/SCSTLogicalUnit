@@ -591,37 +591,10 @@ SCSTLogicalUnit_stop() {
     local target
     local initiator
 
+    # the monitoring also does an ACL/export cleanup on stop
     SCSTLogicalUnit_monitor
-    if [ $? -eq $OCF_SUCCESS ]; then
-        # Delete LUN for all its targets
-        for target in ${OCF_RESKEY_target_id}; do
-            ini_path="${FABRIC_BASE}/${target}/ini_groups"
-            # Check if the target is available
-            if [ ! -e "${FABRIC_BASE}/${target}" ]; then
-                ocf_log warn "Target ${OCF_RESKEY_target_id} not configured - Assuming LU ${OCF_RESOURCE_INSTANCE} is not up.";
-                continue
-            fi
 
-            # Unexport the lun for every initiator
-            for initiator in ${OCF_RESKEY_allowed_initiators};do
-                if [ -d "${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}" ]; then
-                    scst_sysfs_write "del ${OCF_RESKEY_lun}" "${ini_path}/${initiator}/luns/mgmt" || {
-                        ocf_log err "Unable to unexport lun ${OCF_RESKEY_lun} from initiator group ${initiator} for target ${target}.";
-                        exit $OCF_ERR_GENERIC
-                    }
-                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Unexported lun ${OCF_RESKEY_lun} from initiator group ${initiator} for target ${target}."
-                fi
-                # remove empty (or only exporting lun 0) ini_groups
-                if [ $(find ${${ini_path}/${initiator}/luns} -mindepth 1 -maxdepth 1 -type d ! -name '0' | wc -l) -eq 0 ] ; then
-                    scst_sysfs_write "del ${initiator}" ${ini_path}/mgmt || {
-                        ocf_log err "Unable to delete empty initiator group ${initiator} from target ${target}.";
-                        exit $OCF_ERR_GENERIC
-                    }
-                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted empty initiator group ${initiator} from target ${target}."
-                fi
-            done
-        done
-    fi
+    #SCSTLogicalUnit_acls
 
     # Delete the device definition for LU
     if [ -e "${SCST_BASE}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
