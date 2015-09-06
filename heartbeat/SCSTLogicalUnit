@@ -891,6 +891,7 @@ SCSTLogicalUnit_validate() {
         # Do we have all required binaries?
 	case $OCF_RESKEY_fabric in
 	    iscsi)
+                check_binary find
                 ;;
 	esac
 
