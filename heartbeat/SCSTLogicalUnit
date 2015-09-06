@@ -94,7 +94,7 @@ a Target, exported via a daemon that speaks a specific protocol.
 <shortdesc lang="en">Manages Logical Units (LUs) for SCST targets</shortdesc>
 
 <parameters>
-<parameter name="fabric" required="0" unique="0">
+<parameter name="fabric" required="0" unique="1">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
 "qla2xxx". If unspecified, "iscsi" is used.
@@ -103,7 +103,7 @@ The SCST target supports several fabric types. Must be one of "iscsi" or
 <content type="string" default="${OCF_RESKEY_fabric_default}"/>
 </parameter>
 
-<parameter name="target_id" required="1" unique="0">
+<parameter name="target_id" required="1" unique="1">
 <longdesc lang="en">
 A white-space separated list of targets this Logical Unit belongs to. 
 For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
@@ -114,7 +114,7 @@ identification.
 <content type="string" />
 </parameter>
 
-<parameter name="lun" required="1" unique="0">
+<parameter name="lun" required="1" unique="1">
 <longdesc lang="en">
 The Logical Unit number (LUN) exposed to initiators.
 </longdesc>
@@ -130,7 +130,7 @@ The path to the block device or file to be exposed.
 <content type="string" />
 </parameter>
 
-<parameter name="device_handler" required="0" unique="0">
+<parameter name="device_handler" required="0" unique="1">
 <longdesc lang="en">
 The SCST devive handler to be used for this Logical Unit.
 The supported handlers for this RA are:
@@ -174,7 +174,7 @@ The SCSI product ID to be configured for this Logical Unit.
 <content type="string" />
 </parameter>
 
-<parameter name="additional_parameters" required="0" unique="0">
+<parameter name="additional_parameters" required="0" unique="1">
 <longdesc lang="en">
 Additional LU parameters. A space-separated list of "name=value" pairs
 which will be passed through to the targets management
