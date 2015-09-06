@@ -44,8 +44,8 @@ OCF_RESKEY_allowed_initiators_default=""
 # and persistent in the event of resource migration.
 # SCSI IDs are limited to 24 bytes. To have a reasonably unique
 # default SCSI SN, use the first 24 bytes of an MD5 hash of
-# $OCF_RESOURCE_INSTANCE
-sn=`echo -n "${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
+# OCF_RESKEY_target_id and $OCF_RESOURCE_INSTANCE
+sn=`echo -n "${OCF_RESKEY_target_id} ${OCF_RESOURCE_INSTANCE}" | openssl md5 | sed -e 's/(stdin)= //'`
 OCF_RESKEY_scsi_id_default="${sn:0:24}"
 : ${OCF_RESKEY_scsi_id=${OCF_RESKEY_scsi_id_default}}
 # To have a reasonably unique default SCSI SN, use the first 8 bytes
