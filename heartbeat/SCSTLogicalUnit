@@ -386,11 +386,11 @@ SCSTLogicalUnit_acls() {
 
                     # Always add LUN 0 to the initiator group
                     if [ ! -d "${ini_path}/${initiator}/luns/0" ]; then
-                        scst_sysfs_write "add dummy_${OCF_RESKEY_fabric} 0" ${ini_path}/${initiator}/luns/mgmt || {
-                            ocf_log err "Unable to export dummy_${OCF_RESKEY_fabric} with LUN 0 via initiator group ${initiator} for target ${target}.";
+                        scst_sysfs_write "add LUN0_${OCF_RESKEY_fabric} 0" ${ini_path}/${initiator}/luns/mgmt || {
+                            ocf_log err "Unable to export LUN0_${OCF_RESKEY_fabric} with LUN 0 via initiator group ${initiator} for target ${target}.";
                             exit $OCF_ERR_GENERIC
                         }
-                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Exported dummy_${OCF_RESKEY_fabric} lun 0 via initiator group ${initiator} for target ${target}."
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Exported LUN0_${OCF_RESKEY_fabric} lun 0 via initiator group ${initiator} for target ${target}."
                     fi
 
                     # Finally export the LU for this initiator
