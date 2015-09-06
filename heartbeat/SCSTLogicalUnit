@@ -616,7 +616,9 @@ SCSTLogicalUnit_monitor() {
     local handler_path
     local dev_path
     local target
+    local initiator
     local index
+    local counter
     declare -a ids=( $(echo -n ${OCF_RESKEY_target_id}) )
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
@@ -644,15 +646,19 @@ SCSTLogicalUnit_monitor() {
 
     # Check all targets
     for target in ${OCF_RESKEY_target_id}; do
-        lun_path="${FABRIC_BASE}/${target}/ini_groups/${OCF_RESOURCE_INSTANCE}/luns/${OCF_RESKEY_lun}/device"
-        if [ -e ${lun_path} ]  && [ `scst_sysfs_read "${lun_path}/filename"` = "${OCF_RESKEY_path}" ]; then
-            (( index-- ))
-        fi
+        # Fill an array with all exports of this LU
+        declare -a lun_path=( $(ls -1d ${FABRIC_BASE}/${target}/ini_groups/*/luns/${OCF_RESKEY_lun}/device 2>/dev/null | tr '\n' ' ') )
+        counter=0
+        # Check if they all export the same backend device
+        for initiator in "${lun_path[@]}"; do
+            [ -e "$initiator" ]  && [ `scst_sysfs_read "${initiator}/filename"` = "${OCF_RESKEY_path}" ] && (( counter++ ))
+        done
+        [ $counter -eq ${#lun_path[@]} ] && (( index-- ))
     done
 
     if [[ $index -eq 0 ]]; then
         # The lun seems to be availaddble, also verify/fix its acls
-        SCSTLogicalUnit_acls || exit $?
+        SCSTLogicalUnit_acls
 
         # Now check the ALUA state
         if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
