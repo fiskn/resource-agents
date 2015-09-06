@@ -332,10 +332,11 @@ remove_master_score() {
 }
 
 SCSTLogicalUnit_acls() {
-    declare -a acls_del
-    local acls_path
-    local acl_full_path
+    declare -a exports_del
+    local export_full_path
+    local exports
     local initiator
+    local init_path
     local target
 
     # Don't manipulate anything during a probe
@@ -347,58 +348,110 @@ SCSTLogicalUnit_acls() {
     ocf_release_lock_on_exit $LOCKFILE
 
     for target in ${OCF_RESKEY_target_id}; do
-        acls_path="${FABRIC_BASE}/${target}/ini_groups/${OCF_RESOURCE_INSTANCE}/initiators"
+        ini_path="${FABRIC_BASE}/${target}/ini_groups"
         # Get all existing acls for this LUN, fill it in an array.
-        acls_del=( $(ls -1 ${acls_path}/ 2>/dev/null | grep -Ev '^mgmt$' | tr '\n' ' ') )
+        exports_del=( $(ls -1d ${ini_path}/*/luns/${OCF_RESKEY_lun} 2>/dev/null | grep -Ev '/mgmt$' | tr '\n' ' ') )
 
         # Only need to add acls on start,monitor or reload
         case $__OCF_ACTION in
             monitor|start|reload)
-                # Add LUN acl if not already set
-                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                for initiator in $(echo -n ${OCF_RESKEY_allowed_initiators} | tr '[:upper:]' '[:lower:]'); do
-                    acl_full_path="${acls_path}/${initiator}"
-                    # Is the acl already in place?
-                    if [ ! -e "${acl_full_path}" ]; then
-                        # add the initiator id to the acl
-                        scst_sysfs_write "add ${initiator}" ${acls_path}/mgmt || {
-                            ocf_log err "Unable to add initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log debug "Updating allowed initiators for LUN ${OCF_RESKEY_lun}, target ${target}."
+                # Create one initiator group per initiator.
+                for initiator in ${OCF_RESKEY_allowed_initiators}; do
+                    # Create the ini_group
+                    if [ ! -d "${ini_path}/${initiator}" ]; then
+                        scst_sysfs_write "create ${initiator}" ${ini_path}/mgmt || {
+                            ocf_log err "Unable to create initiator group ${initiator} for target ${target}.";
                             exit $OCF_ERR_GENERIC
                         }
-                        ocf_log debug "Allow initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created initiator group ${initiator} for target ${target}."
                     fi
-                    # Remove valid acls from "clean-them-up"-array.
-                    for index in ${!acls_del[@]}; do
-                        if [ "${acls_path}/${acls_del[$index]}" = "$acl_full_path" ]; then
-                        unset acls_del[$index]
+
+                    # allow only one initiator
+                    if [ ! -e "${ini_path}/${initiator}/initiators/${initiator}" ]; then
+                        scst_sysfs_write "add ${initiator}" ${ini_path}/${initiator}/initiators/mgmt || {
+                            ocf_log err "Unable to add initiator ${initiator} to group ${initiator} for target ${target}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Allowed initiator ${initiator} to group ${initiator} for target ${target}."
+                    fi
+                    # delete all other initiators
+                    for index in $(ls -1 ${ini_path}/${initiator}/initiators 2>/dev/null | grep -Ev "^(mgmt|${initiator})$" | tr '\n' ' '); do
+                        scst_sysfs_write "del ${index}" ${ini_path}/${initiator}/initiators/mgmt || {
+                            ocf_log err "Unable to delete initiator ${index} from group ${initiator} for target ${target}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Removed initiator ${index} from group ${initiator} for target ${target}."
+                    done
+
+                    # Always add LUN 0 to the initiator group
+                    if [ ! -d "${ini_path}/${initiator}/luns/0" ]; then
+                        scst_sysfs_write "add dummy_${OCF_RESKEY_fabric} 0" ${ini_path}/${initiator}/luns/mgmt || {
+                            ocf_log err "Unable to export dummy_${OCF_RESKEY_fabric} with LUN 0 via initiator group ${initiator} for target ${target}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Exported dummy_${OCF_RESKEY_fabric} lun 0 via initiator group ${initiator} for target ${target}."
+                    fi
+
+                    # Finally export the LU for this initiator
+                    if [ ! -d "${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}" ]; then
+                        scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE} ${OCF_RESKEY_lun}" ${ini_path}/${initiator}/luns/mgmt || {
+                            ocf_log err "Unable to export ${OCF_RESOURCE_INSTANCE} whith LUN ${OCF_RESKEY_lun} via initiator group ${initiator} for target ${target}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Exported ${OCF_RESOURCE_INSTANCE} with LUN ${OCF_RESKEY_lun} via initiator group ${initiator} for target ${target}."
+                    fi
+
+                    # Remove valid export from "clean-them-up"-array.
+                    export_full_path="${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}"
+                    for index in ${!exports_del[@]}; do
+                        if [ "${exports_del[$index]}" = "$export_full_path" ]; then
+                        unset exports_del[$index]
                             break
                         fi
                     done
                 done
-                # Check if there is an acl for the current LUN, that is not allowed.
+                # Remove exports for the current LU, that are not allowed.
                 ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                for initiator in ${acls_del[@]}; do
-                    if [ -e "${acls_path}/${initiator}" ]; then
-                        # remove the initiator from the acl
-                        scst_sysfs_write "del ${initiator}" ${acls_path}/mgmt || {
-                            ocf_log err "Unable to remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
+                for exports in ${exports_del[@]}; do
+                    if [ -d "${exports}" ]; then
+                        # remove the lun from the ini_group
+                        scst_sysfs_write "del ${OCF_RESKEY_lun}" ${exports}/../mgmt || {
+                            ocf_log err "Unable to unexport LUN ${OCF_RESKEY_lun} - ${exports}";
                             exit $OCF_ERR_GENERIC
                         }
-                        ocf_log debug "Remove initiator ${initiator} for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
+                        ocf_log debug "Unexported LUN ${OCF_RESKEY_lun} - ${exports}"
                     fi
                 done
             ;;
             stop)
                 # Clear the acls on stop of the lun.
-                ocf_log debug "Remove all initiators for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                if [ -e "${acls_path}/mgmt" ]; then
-                    scst_sysfs_write "clear" ${acls_path}/mgmt || {
-                        ocf_log err "Unable to remove all ACLs for LUN ${OCF_RESKEY_lun}, target ${target}, ini_group ${OCF_RESOURCE_INSTANCE}.";
-                        exit $OCF_ERR_GENERIC
-                    }
-                fi
+                ocf_log debug "Remove all exports for LUN ${OCF_RESKEY_lun}, target ${target}."
+                for exports in ${exports_del[@]}; do
+                    if [ -d "${exports}" ]; then
+                        scst_sysfs_write "del ${OCF_RESKEY_lun}" ${exports}/../mgmt || {
+                            ocf_log err "Unable to unexport LUN ${OCF_RESKEY_lun} - ${exports}";
+                            exit $OCF_ERR_GENERIC
+                        }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Unexported LUN ${OCF_RESKEY_lun} - ${exports}"
+                    fi
+                done
             ;;
         esac
+        # remove empty (or only exporting lun 0) ini_groups
+        for initiator in $(find ${FABRIC_BASE}/${target}/ini_groups/ -mindepth 1 -maxdepth 1 -type d) ; do
+            if [ $(find ${initiator}/luns -mindepth 1 -maxdepth 1 -type d ! -name '0' | wc -l) -eq 0 ] ; then
+                # Forcefully close all sessions
+                scst_sysfs_write "1" "${FABRIC_BASE}/${target}/sessions/${initiator##*/}/force_close" && \
+                ocf_log warn "Forcefully closed session from initiator ${initiator##*/}."
+                # Delete the ini_group
+                scst_sysfs_write "del ${initiator##*/}" ${FABRIC_BASE}/${target}/ini_groups/mgmt || {
+                     ocf_log err "Unable to delete empty initiator group ${initiator##*/} from target ${target}.";
+                     exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted empty initiator group ${initiator##*/} from target ${target}."
+           fi
+        done
     done
 
     return $OCF_SUCCESS
