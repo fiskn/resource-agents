@@ -615,10 +615,8 @@ SCSTLogicalUnit_stop() {
     local target
     local initiator
 
-    # the monitoring also does an ACL/export cleanup on stop
     SCSTLogicalUnit_monitor
-
-    #SCSTLogicalUnit_acls
+    SCSTLogicalUnit_acls
 
     # Delete the device definition for LU
     if [ -e "${SCST_BASE}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
@@ -681,8 +679,9 @@ SCSTLogicalUnit_monitor() {
     done
 
     if [[ $index -eq 0 ]]; then
-        # The lun seems to be availaddble, also verify/fix its acls
-        SCSTLogicalUnit_acls
+        # The lun seems to be availaddble, also verify/fix its acls,
+        # but not on stop
+        [ "$__OCF_ACTION" = "stop" ] || SCSTLogicalUnit_acls
 
         # Now check the ALUA state
         if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
