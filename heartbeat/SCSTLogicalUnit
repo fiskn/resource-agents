@@ -347,6 +347,7 @@ SCSTLogicalUnit_acls() {
     local exports
     local initiator
     local init_path
+    local session
     local target
 
     # Don't manipulate anything during a probe
@@ -451,9 +452,13 @@ SCSTLogicalUnit_acls() {
         # remove empty (or only exporting lun 0) ini_groups
         for initiator in $(find ${FABRIC_BASE}/${target}/ini_groups/ -mindepth 1 -maxdepth 1 -type d) ; do
             if [ $(find ${initiator}/luns -mindepth 1 -maxdepth 1 -type d ! -name '0' | wc -l) -eq 0 ] ; then
-                # Forcefully close all sessions
-                scst_sysfs_write "1" "${FABRIC_BASE}/${target}/sessions/${initiator##*/}/force_close" && \
-                ocf_log warn "Forcefully closed session from initiator ${initiator##*/}."
+                # Forcefully close all sessions.
+                # When using iSCSI MPIO, several sessions per initiator can be available.
+                for session in $(ls -1d ${FABRIC_BASE}/${target}/sessions/${initiator##*/} \
+                                        ${FABRIC_BASE}/${target}/sessions/${initiator##*/}_* 2>/dev/null) ; do
+                    scst_sysfs_write "1" "${session}/force_close" && \
+                    ocf_log warn "Forcefully closed session from initiator ${initiator##*/}."
+                done
                 # Delete the ini_group
                 scst_sysfs_write "del ${initiator##*/}" ${FABRIC_BASE}/${target}/ini_groups/mgmt || {
                      ocf_log err "Unable to delete empty initiator group ${initiator##*/} from target ${target}.";
