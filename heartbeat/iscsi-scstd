@@ -1,0 +1,181 @@
+#!/bin/bash
+#
+# iscsi-scstd
+#
+# Description: Manages the user-land daemon iscsi-scstd for SCST targets.
+#
+# Author:      Andreas Kurz
+#
+# License:     GNU General Public License (GPL)
+#
+# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+#
+# See usage() function below for more details ...
+#
+#######################################################################
+# Initialization:
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+: ${__OCF_ACTION=$1}
+
+# Defaults
+# Set the default path for "iscsi-scstd" 
+OCF_RESKEY_binary_default="/usr/local/sbin/iscsi-scstd"
+: ${OCF_RESKEY_binary=${OCF_RESKEY_binary_default}}
+
+# For convinience
+pidfile="/var/run/iscsi-scstd.pid"
+#######################################################################
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="iscsi-scstd" version="0.1">
+<version>0.1</version>
+
+<longdesc lang="en">
+This is an iscsi-scstd Resource Agent. The iscsi-scstd program
+implements the user level part of iSCSI SCST Target software.
+</longdesc>
+<shortdesc lang="en">iscsi-scstd resource agent</shortdesc>
+
+<parameters>
+<parameter name="binary" unique="0" required="0">
+<longdesc lang="en">
+The full path to the "iscsi-scstd" binary.
+</longdesc>
+<shortdesc lang="en">iscsi-scstd binary</shortdesc>
+<content type="string" default="${OCF_RESKEY_binary_default}" />
+</parameter>
+</parameters>
+
+<actions>
+<action name="start"        timeout="30" />
+<action name="stop"         timeout="300" />
+<action name="monitor"      timeout="20" interval="10" depth="0" />
+<action name="meta-data"    timeout="5" />
+<action name="validate-all" timeout="20" />
+</actions>
+</resource-agent>
+END
+}
+
+#######################################################################
+
+iscsidSCST_usage() {
+	cat <<END
+usage: $0 {start|stop|monitor|validate-all|meta-data}
+
+Expects to have a fully populated OCF RA-compliant environment set.
+END
+}
+
+iscsidSCST_start() {
+    iscsidSCST_monitor
+    if [ $? =  $OCF_SUCCESS ]; then
+	return $OCF_SUCCESS
+    fi
+    # Load core modules
+    ocf_run -q modprobe iscsi_scst || {
+       ocf_log err "Unable to load \"iscsi_scst\" module";
+       return $OCF_ERR_INSTALLED
+    }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: \"iscsi_scst\" module loaded."
+
+    ocf_run -q $OCF_RESKEY_binary || {
+       ocf_log err "Unable to start iscsi_scstd - used binary \"$OCF_RESKEY_binary\".";
+       return $OCF_ERR_GENERIC
+    }
+
+    return $OCF_SUCCESS
+}
+
+iscsidSCST_stop() {
+    local tmout
+    local proc
+    local pid
+
+    iscsidSCST_monitor || return $OCF_SUCCESS
+
+    # Stopping the iscsi-scstd should be fast,
+    # unloading the modules might take some time.
+    
+    tmout=$(( ($OCF_RESKEY_CRM_meta_timeout/1000) * 1/4 ))
+    pid=`cat $pidfile 2>/dev/null`
+    proc=`pgrep -f "^${OCF_RESKEY_binary}$"`
+    
+    # If the pid file and pgrep agree all is fine.
+    # When in doubt rely on pgrep.
+    if [ "${pid// }" != "$proc" ]; then
+        ocf_log debug "Pid ${pid} in file \"${pidfile}\" stale? \"${OCF_RESKEY_binary}\" in process list has pid ${proc}.";
+        pid=$proc
+    fi
+   
+    # If we still have no pid now, process died
+    # during our check.
+    [ -z ${pid// } ] && return $OCF_SUCCESS
+
+    # Now really try to stop the daemon 
+    ocf_stop_processes TERM $tmout $pid || return $OCF_ERR_GENERIC
+
+    return $OCF_SUCCESS
+}
+
+iscsidSCST_monitor() {
+
+    ocf_pidfile_status $pidfile
+    case $? in
+        0)
+           return $OCF_SUCCESS
+           ;;
+        2)
+           # No pidfile found, check for the process
+           pgrep -f "^${OCF_RESKEY_binary}$" && {
+               ocf_log debug "Pid file \"${pidfile}\" not found but found \"${OCF_RESKEY_binary}\" in process list.";
+               return $OCF_SUCCESS
+           }
+           ;;
+    esac
+
+    return $OCF_NOT_RUNNING
+}
+
+iscsidSCST_validate() {
+    local binary
+    
+    # Are all binaries available?
+    for binary in modprobe rmmod pgrep pkill $OCF_RESKEY_binary; do
+        check_binary $binary
+    done
+
+    return $OCF_SUCCESS
+}
+
+case $1 in
+  meta-data)
+        meta_data
+        exit $OCF_SUCCESS
+        ;;
+  usage|help)
+        SCSTTarget_usage
+        exit $OCF_SUCCESS
+        ;;
+esac
+
+# Everything except usage and meta-data must pass the validate test
+iscsidSCST_validate
+
+case $__OCF_ACTION in
+start)		iscsidSCST_start;;
+stop)		iscsidSCST_stop;;
+monitor)	iscsidSCST_monitor;;
+validate-all)	iscsidSCST_validate;;
+*)		iscsidSCST_usage
+		exit $OCF_ERR_UNIMPLEMENTED
+		;;
+esac
+rc=$?
+ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
+exit $rc
+
