@@ -540,16 +540,14 @@ SCSTTarget_validate() {
 	fi
     done
 
-    if ! ocf_is_probe; then
-        # Do we have all required binaries?
-	case $OCF_RESKEY_fabric in
-	    iscsi|qla2xxx)
-		check_binary modprobe
-		check_binary rmmod
-		check_binary find
-		;;
-	esac
-    fi
+    # Do we have all required binaries?
+    case $OCF_RESKEY_fabric in
+        iscsi|qla2xxx)
+            check_binary modprobe
+            check_binary rmmod
+            check_binary find
+        ;;
+    esac
 
     return $OCF_SUCCESS
 }
