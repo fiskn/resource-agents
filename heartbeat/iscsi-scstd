@@ -52,7 +52,7 @@ The full path to the "iscsi-scstd" binary.
 
 <actions>
 <action name="start"        timeout="30" />
-<action name="stop"         timeout="300" />
+<action name="stop"         timeout="60" />
 <action name="monitor"      timeout="20" interval="10" depth="0" />
 <action name="meta-data"    timeout="5" />
 <action name="validate-all" timeout="20" />
@@ -98,10 +98,8 @@ iscsidSCST_stop() {
 
     iscsidSCST_monitor || return $OCF_SUCCESS
 
-    # Stopping the iscsi-scstd should be fast,
-    # unloading the modules might take some time.
-    
-    tmout=$(( ($OCF_RESKEY_CRM_meta_timeout/1000) * 1/4 ))
+    # Stopping the iscsi-scstd should be fast
+    tmout=$(( ($OCF_RESKEY_CRM_meta_timeout/1000) -5 ))
     pid=`cat $pidfile 2>/dev/null`
     proc=`pgrep -f "^${OCF_RESKEY_binary}$"`
     
