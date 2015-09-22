@@ -88,8 +88,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTLogicalUnit" version="0.1.0">
-<version>0.1.0</version>
+<resource-agent name="SCSTLogicalUnit" version="0.1.1">
+<version>0.1.1</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a SCST target. A Logical unit is a subdivision of 
@@ -626,6 +626,15 @@ SCSTLogicalUnit_stop() {
         }
     fi
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler."
+
+    # In case of a block device, flush any outstanding I/O to the device
+    if [ -b $OCF_RESKEY_path ]; then
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
+        # This can really take some time, allow other LUNs
+        # to take the lock
+        [ -e "$LOCKFILE" ] && ocf_run rm -vf $LOCKFILE
+        ocf_run blockdev -v --flushbufs $OCF_RESKEY_path
+    fi
 
     remove_master_score
 
