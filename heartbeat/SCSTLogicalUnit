@@ -479,14 +479,16 @@ SCSTLogicalUnit_start() {
         $OCF_SUCCESS|$OCF_RUNNING_MASTER) return $rc ;;
     esac
 
+    local all_params
+    local dev_path
+    local dev_group
+    local index
+    local initiator
     local ini_path
     local handler_path
-    local dev_path
-    local target
-    local initiator
-    local tpg
     local param
-    local all_params
+    local target
+    local tpg
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
@@ -560,40 +562,90 @@ SCSTLogicalUnit_start() {
     fi
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set vendor id to ${OCF_RESKEY_vendor_id}."
 
+    # Prepare for ALUA if configured
+    if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
+        # For ALUA, create create a device group for this lun
+        # and assign a device to the group
+        dev_group="${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}"
+        if [ ! -d "${dev_group}" ]; then
+            scst_sysfs_write "create ${OCF_RESOURCE_INSTANCE}" ${SCST_BASE}/device_groups/mgmt || {
+                ocf_log err "Unable to create device_group for device ${OCF_RESOURCE_INSTANCE}.";
+                exit $OCF_ERR_GENERIC
+            }
+        fi
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created device_group ${OCF_RESOURCE_INSTANCE}."
+
+        # Add the device to its device_group 
+        if [ ! -e "${dev_group}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
+            scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE}" ${dev_group}/devices/mgmt || {
+                ocf_log err "Unable to add device ${OCF_RESOURCE_INSTANCE} to device_group ${OCF_RESOURCE_INSTANCE}.";
+                exit $OCF_ERR_GENERIC
+            }
+        fi
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added device ${OCF_RESOURCE_INSTANCE} to device_group ${OCF_RESOURCE_INSTANCE}."
+
+        # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
+        # for "multi-node targets". The position decides about the TPG id.
+        index=1
+        for tpg in "${tpgs}"; do
+            # Create the TPGs, one for each node
+            if [ ! -d "${dev_group}/target_groups/${tpg}" ]; then
+                scst_sysfs_write "create ${tpg}" ${dev_group}/target_groups/mgmt || {
+                    ocf_log err "Unable to create target_group ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                    exit $OCF_ERR_GENERIC
+                }
+            fi
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created target_group ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}."
+
+            # Set the id for ALUA TPG
+            if [ -d "${dev_group}/target_groups/${tpg}" ]; then
+                scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/group_id || {
+                    ocf_log err "Unable to set id ${index} for TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${index} for TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}."
+               
+                # By default the TPG is not preferred and in standby mode
+                scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
+                    ocf_log err "Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                }
+                scst_sysfs_write "standby" ${dev_group}/target_groups/${tpg}/state || {
+                    ocf_log err "Unable to set state to standby - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is standby/not preferred."
+
+                # Add all targets to the target group,
+                # use the target id also for the relative id
+                for target in ${OCF_RESKEY_target_id}; do
+                    if [ -d "${dev_group}/target_groups/${tpg}" ]; then
+                        scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/group_id || {
+                            ocf_log err "Unable to set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
+
+                        scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
+                            ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                            exit $OCF_ERR_GENERIC
+                        }
+                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added target ${target} to TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
+
+                        if [ -d "${dev_group}/target_groups/${tpg}/${target}" ]; then
+                            scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
+                                ocf_log err "Unable to set relative target id ${index} for target ${target} - device_group ${OCF_RESOURCE_INSTANCE}.";
+                                exit $OCF_ERR_GENERIC
+                            }
+                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${index} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
+                        fi
+                   fi 
+                done
+            fi
+            index++
+        done
+    fi
 
     # export the LU to all allowed initiators
     SCSTLogicalUnit_acls
-
-    # For ALUA, create the target port group name for this lun
-    # and assign the group to the lun
-    if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
-        for (( index = 0; index < ${#tpgs[@]}; index++ )); do
-            lun_path="/sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua"
-            # Only add the ALUATPG if it does not already exist,
-            # and always set a specific TPG id
-            if [ ! -d ${lun_path}/${tpgs[$index]} ]; then
-                ocf_run tcm_node --addtgptgpwithmd=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/ \
-                    ${tpgs[$index]} $(( $index + 1 )) || exit $OCF_ERR_GENERIC
-	        # Initially switch it into standby mode and
-                # only allow implicit state changes.
-                ocf_run tcm_node --setaluastate iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpgs[$index]} s || exit $OCF_ERR_GENERIC
-                ocf_run tcm_node --setaluatype=iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE} \
-                    ${tpgs[$index]} both || exit $OCF_ERR_GENERIC
-            fi
-            # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
-            # for "multi-node targets"
-            for target in ${OCF_RESKEY_target_id}; do
-                # Only assign the ALUA TPG for this node
-                if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
-                    lun_path="/sys/kernel/config/target/${OCF_RESKEY_fabric}/${target}/tpgt_1/lun/lun_${OCF_RESKEY_lun}/alua_tg_pt_gp"
-                    # Do it manually and not with tcm_node, to also
-                    # work with FC
-                    echo -n ${tpgs[$index]} > ${lun_path} || exit $OCF_ERR_GENERIC
-                fi
-            done
-        done
-    fi
 
     ocf_is_ms && update_master_score
 
