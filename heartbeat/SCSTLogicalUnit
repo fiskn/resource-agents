@@ -794,63 +794,55 @@ SCSTLogicalUnit_monitor() {
 }
 
 SCSTLogicalUnit_promote() {
-    # Keep trying to promote the resource;
-    # wait for the CRM to time us out if this fails
-    while true; do
-        SCSTLogicalUnit_monitor
-        rc=$?
+    SCSTLogicalUnit_monitor
+    rc=$?
 
-        case $rc in
-        $OCF_SUCCESS)
-            update_alua_access_state $HOSTNAME active || {
-                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - promoting was successfull, TPG $HOSTNAME is now optimized"
-            ;;
-        $OCF_NOT_RUNNING)
-            ocf_log error "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
-            break
-            ;;
-        $OCF_RUNNING_MASTER)
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Promotion was successful"
-            rc=$OCF_SUCCESS
-            break
-            ;;
-        esac
-        sleep 3
-    done
+    case $rc in
+    $OCF_SUCCESS)
+        update_alua_access_state $HOSTNAME active || {
+            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
+            exit $OCF_ERR_GENERIC
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - promoting was successfull, TPG $HOSTNAME is now optimized"
+        ;;
+    $OCF_NOT_RUNNING)
+        ocf_log error "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
+        break
+        ;;
+    $OCF_RUNNING_MASTER)
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Promotion was successful"
+        rc=$OCF_SUCCESS
+        break
+        ;;
+    esac
+    sleep 3
 
     return $rc
 }
 
 SCSTLogicalUnit_demote() {
-    # Keep trying to demote the resource;
-    # wait for the CRM to time us out if this fails
-    while true; do
-        SCSTLogicalUnit_monitor
-        rc=$?
+    SCSTLogicalUnit_monitor
+    rc=$?
 
-        case $rc in
-        $OCF_RUNNING_MASTER)
-            update_alua_access_state $HOSTNAME standby || {
-                ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
-            ;;
-        $OCF_NOT_RUNNING)
-            ocf_log error "ALUA - Trying to demote a resource that was not started"
-            break
-            ;;
-        $OCF_SUCCESS)
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Demotion was successful"
-            rc=$OCF_SUCCESS
-            break
-            ;;
-            esac
-        sleep 3
-    done
+    case $rc in
+    $OCF_RUNNING_MASTER)
+        update_alua_access_state $HOSTNAME standby || {
+            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+            exit $OCF_ERR_GENERIC
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
+        ;;
+    $OCF_NOT_RUNNING)
+        ocf_log error "ALUA - Trying to demote a resource that was not started"
+        break
+        ;;
+    $OCF_SUCCESS)
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Demotion was successful"
+        rc=$OCF_SUCCESS
+        break
+        ;;
+        esac
+    sleep 3
 
     return $rc
 }
