@@ -291,25 +291,25 @@ update_alua_access_state() {
     case $2 in
         standby)
             scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
-                ocf_log err "Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log err "ALUA - Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
             scst_sysfs_write "standby" ${dev_group}/target_groups/${tpg}/state || {
-                ocf_log err "Unable to set state to standby - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log err "ALUA - Unable to set state to standby - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
             ocf_log debug "${OCF_RESOURCE_INSTANCE} - ALUA: TPG ${tpg} is standby/not preferred."
             ;;
         optimized)
             scst_sysfs_write "1" ${dev_group}/target_groups/${tpg}/preferred || {
-                ocf_log err "Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log err "ALUA - Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
             scst_sysfs_write "active" ${dev_group}/target_groups/${tpg}/state || {
-                ocf_log err "Unable to set state to active - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log err "ALUA - Unable to set state to active - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE} - ALUA: TPG ${tpg} is optimized/preferred."
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - TPG ${tpg} is optimized/preferred."
             ;;
     esac
 
@@ -804,14 +804,14 @@ SCSTLogicalUnit_promote() {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
                         exit $OCF_ERR_GENERIC
                     }
-                    ocf_log debug "ALUA: promote successfull, TPG $HOSTNAME is now optimized"
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - promoting was successfull, TPG $HOSTNAME is now optimized"
 		    ;;
 		$OCF_NOT_RUNNING)
-	            ocf_log error "Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
+	            ocf_log error "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
 	            break
 	            ;;
 		$OCF_RUNNING_MASTER)
-	            ocf_log debug "Promotion successful"
+	            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Promotion was successful"
 	            rc=$OCF_SUCCESS
 	            break
 	            ;;
@@ -835,14 +835,14 @@ SCSTLogicalUnit_demote() {
                         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
                         exit $OCF_ERR_GENERIC
                     }
-                    ocf_log debug "ALUA: demote successfull, TPG $HOSTNAME is now standby"
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
 		    ;;
 		$OCF_NOT_RUNNING)
-	            ocf_log error "Trying to demote a resource that was not started"
+	            ocf_log error "ALUA - Trying to demote a resource that was not started"
 	            break
 	            ;;
 		$OCF_SUCCESS)
-	            ocf_log debug "Demotion successful"
+	            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Demotion was successful"
 	            rc=$OCF_SUCCESS
 	            break
 	            ;;
