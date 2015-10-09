@@ -937,23 +937,13 @@ SCSTLogicalUnit_validate() {
     # Is the configured fabric supported?
     case "$OCF_RESKEY_fabric" in
 	"iscsi")
+            :
 	    ;;
 	*)
 	    ocf_log error "Unsupported SCST target fabric \"$OCF_RESKEY_fabric\"!"
 	    exit $OCF_ERR_CONFIGURED
 	    ;;
     esac
-
-    # Is there an ALUA TPG defined for each target this LUN is attached to?
-    if [ -n "${OCF_RESKEY_alua_tpg}" ] && [ "$__OCF_ACTION" != "stop" ]; then
-        declare -a nrtpg=( ${OCF_RESKEY_alua_tpg} )
-        declare -a nrids=( ${OCF_RESKEY_target_id} )
-
-        if [ ${#nrtpg[@]} -ne ${#nrids[@]} ]; then
-	    ocf_log error "Number of ALUA TPGs (${#nrtpg[@]}) does not match number of targets (${#nrids[@]})!"
-	    exit $OCF_ERR_CONFIGURED
-        fi
-    fi
 
     # Do we have any configuration parameters that the current
     # fabric does not support?
@@ -962,7 +952,7 @@ SCSTLogicalUnit_validate() {
     local envar
     case $OCF_RESKEY_fabric in
 	iscsi)
-	    unsupported_params="alua_tpg"
+	    unsupported_params=""
 	    ;;
     esac
     for var in ${unsupported_params}; do
