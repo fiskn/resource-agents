@@ -1023,16 +1023,31 @@ fi
 SCSTLogicalUnit_validate
 
 case $__OCF_ACTION in
-start)		SCSTLogicalUnit_start;;
-stop)		SCSTLogicalUnit_stop;;
-monitor|status)	SCSTLogicalUnit_monitor;;
-reload)		ocf_log info "Reloading..."
-		SCSTLogicalUnit_reload
-		;;
-validate-all)	;;
-*)		SCSTLogicalUnit_usage
-		exit $OCF_ERR_UNIMPLEMENTED
-		;;
+    start)
+        SCSTLogicalUnit_start
+        ;;
+    stop)
+        SCSTLogicalUnit_stop
+        ;;
+    monitor|status)
+        SCSTLogicalUnit_monitor
+        ;;
+    reload)
+        ocf_log info "Reloading..."
+        SCSTLogicalUnit_reload
+        ;;
+    promote)
+        SCSTLogicalUnit_promote
+        ;;
+    demote)
+        SCSTLogicalUnit_demote
+        ;;
+    validate-all)
+        ;;
+    *)
+        SCSTLogicalUnit_usage
+        exit $OCF_ERR_UNIMPLEMENTED
+	;;
 esac
 rc=$?
 ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
