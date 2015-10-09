@@ -717,7 +717,7 @@ SCSTLogicalUnit_monitor() {
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
-    alua_state=2
+    alua_state="standby"
     index=${#ids[@]}
 
     # If our backing device (or file) doesn't even exist, we're not running
@@ -757,13 +757,13 @@ SCSTLogicalUnit_monitor() {
 
         # Now check the ALUA state
         if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
-            alua_state="$(cat /sys/kernel/config/target/core/iblock_${OCF_RESKEY_lio_iblock}/${OCF_RESOURCE_INSTANCE}/alua/$HOSTNAME/alua_access_state)"
+            alua_state="$(scst_sysfs_read ${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}/target_groups/${HOSTNAME}/state)"
             case $alua_state in
-                0)
+                active)
                     update_master_score
                     return $OCF_RUNNING_MASTER
                     ;;
-                2)
+                standby)
                     update_master_score
                     return $OCF_SUCCESS
                     ;;
