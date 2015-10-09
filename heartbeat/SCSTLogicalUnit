@@ -300,7 +300,7 @@ update_alua_access_state() {
             }
             ocf_log debug "${OCF_RESOURCE_INSTANCE} - ALUA: TPG ${tpg} is standby/not preferred."
             ;;
-        optimized)
+        active)
             scst_sysfs_write "1" ${dev_group}/target_groups/${tpg}/preferred || {
                 ocf_log err "ALUA - Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
@@ -309,7 +309,7 @@ update_alua_access_state() {
                 ocf_log err "ALUA - Unable to set state to active - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - TPG ${tpg} is optimized/preferred."
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - TPG ${tpg} is active/preferred."
             ;;
     esac
 
@@ -874,18 +874,18 @@ SCSTLogicalUnit_notify() {
                 # Do we have any master(s) at all and did the start happened locally?
                 if [ "$node" = "$HOSTNAME" ]; then
                     # We are slave: be sure the master(s) TPG is also
-                    # set to optimized (without luns) on this node.
+                    # set to active (without luns) on this node.
                     # We rely on default standby state on creation.
                     for instance in $master; do
-                         update_alua_access_state $instance optimized
+                         update_alua_access_state $instance active
                     done
                 fi
             done
             ;;
         post/promote)
             for node in $promoteit; do
-                # Switch all new master instances TPG to optimized.
-                update_alua_access_state $node optimized
+                # Switch all new master instances TPG to active.
+                update_alua_access_state $node active
             done
             ;;
         post/demote)
