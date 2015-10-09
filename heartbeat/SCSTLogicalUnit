@@ -633,11 +633,13 @@ SCSTLogicalUnit_start() {
                         }
                         ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
 
-                        scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
-                            ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
-                            exit $OCF_ERR_GENERIC
-                        }
-                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added target ${target} to TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
+                        if [ ! -L "${dev_group}/target_groups/${tpg}/${target}" ]; then
+                            scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
+                                ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                                exit $OCF_ERR_GENERIC
+                            }
+                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added target ${target} to TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
+                        fi
 
                         if [ -d "${dev_group}/target_groups/${tpg}/${target}" ]; then
                             scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
