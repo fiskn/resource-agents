@@ -58,6 +58,8 @@ fi
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
+CRM_ATTR_TGT="${HA_SBIN_DIR}/crm_attribute --node ${HOSTNAME} --name local_${OCF_RESKEY_fabric}_targets --lifetime forever"
+
 # Lockfile, to prevent races on multi-target setups
 LOCKFILE=${HA_RSCTMP}/SCSTTarget.lock
 #######################################################################
@@ -66,8 +68,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.1.0">
-<version>0.1.0</version>
+<resource-agent name="SCSTTarget" version="0.1.1">
+<version>0.1.1</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
@@ -336,6 +338,10 @@ SCSTTarget_start() {
     }
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Enabled ${OCF_RESKEY_fabric} fabric."
 
+    # Write the local configured targets into CIB -
+    # need this for ALUA TPGs
+    ${CRM_ATTR_TGT} --update "${OCF_RESKEY_id}"
+
     return $OCF_SUCCESS
 }
 
@@ -414,6 +420,9 @@ SCSTTarget_stop() {
         }
         ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
     fi
+
+    # Cleanup information for ALUA on target stop
+    ${CRM_ATTR_TGT} --delete
 
     return $OCF_SUCCESS
 }
