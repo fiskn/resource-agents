@@ -297,6 +297,16 @@ get_index() {
     done
 }
 
+flushbufs() {
+    if [ -b $OCF_RESKEY_path ]; then
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
+        # This can really take some time, allow other LUNs
+        # to take the lock
+        [ -e "$LOCKFILE" ] && ocf_run rm -vf $LOCKFILE
+        ocf_run blockdev -v --flushbufs $OCF_RESKEY_path
+    fi
+}
+
 update_alua_access_state() {
     local tpg="$1"
     local dev_group="${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}"
@@ -710,13 +720,7 @@ SCSTLogicalUnit_stop() {
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted device ${OCF_RESOURCE_INSTANCE} from ${OCF_RESKEY_device_handler} handler."
 
     # In case of a block device, flush any outstanding I/O to the device
-    if [ -b $OCF_RESKEY_path ]; then
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
-        # This can really take some time, allow other LUNs
-        # to take the lock
-        [ -e "$LOCKFILE" ] && ocf_run rm -vf $LOCKFILE
-        ocf_run blockdev -v --flushbufs $OCF_RESKEY_path
-    fi
+    flushbufs
 
     remove_master_score
 
@@ -870,6 +874,9 @@ SCSTLogicalUnit_demote() {
     esac
 
     # Now do the demotion
+    # In case of a block device, flush any outstanding I/O to the device
+    flushbufs
+
     update_alua_access_state $HOSTNAME standby || {
         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
         exit $OCF_ERR_GENERIC
