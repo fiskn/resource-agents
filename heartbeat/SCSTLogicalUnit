@@ -775,8 +775,10 @@ SCSTLogicalUnit_monitor() {
         [ "$__OCF_ACTION" = "stop" ] || SCSTLogicalUnit_acls
 
         # Now check the ALUA state
-        if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
-            alua_state="$(scst_sysfs_read ${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}/target_groups/${HOSTNAME}/state)"
+        if [ -n "${OCF_RESKEY_alua_tpg}" ] ; then
+            if [ -e "${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}/target_groups/${HOSTNAME}/state" ]; then
+                alua_state="$(scst_sysfs_read ${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}/target_groups/${HOSTNAME}/state)"
+            fi
             case $alua_state in
                 active)
                     update_master_score
