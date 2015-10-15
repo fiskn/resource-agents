@@ -819,26 +819,31 @@ SCSTLogicalUnit_promote() {
     rc=$?
 
     case $rc in
-    $OCF_SUCCESS)
-        update_alua_access_state $HOSTNAME active || {
-            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/optimized!";
-            exit $OCF_ERR_GENERIC
-        }
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - promoting was successfull, TPG $HOSTNAME is now optimized"
-        ;;
-    $OCF_NOT_RUNNING)
-        ocf_log error "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that was not started"
-        break
-        ;;
-    $OCF_RUNNING_MASTER)
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Promotion was successful"
-        rc=$OCF_SUCCESS
-        break
-        ;;
+        $OCF_SUCCESS)
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - currently in Slave state, TPG $HOSTNAME is standby/not-preferred"
+            ;;
+        $OCF_NOT_RUNNING)
+            ocf_log info "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that is not running, start it ..."
+            # Resource is down? ... start it
+            SCSTLogicalUnit_start
+            ;;
+        $OCF_RUNNING_MASTER)
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - already in Master state, TPG $HOSTNAME is active/preferred"
+            return $OCF_SUCCESS
+            ;;
+        *)
+            ocf_log error "Unexpected error, unable to promote TPG $HOSTNAME for LU ${OCF_RESOURCE_INSTANCE}."
+            exit $rc
     esac
-    sleep 3
 
-    return $rc
+    # Now do the promotion
+    update_alua_access_state $HOSTNAME active || {
+        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to active/preferred!";
+        exit $OCF_ERR_GENERIC
+    }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - promoting was successfull, TPG $HOSTNAME is now active/preferred"
+
+    return $OCF_SUCCESS
 }
 
 SCSTLogicalUnit_demote() {
