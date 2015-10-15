@@ -691,6 +691,15 @@ SCSTLogicalUnit_stop() {
     SCSTLogicalUnit_monitor
     SCSTLogicalUnit_acls
 
+    # Delete the device_group definition for LU
+    if [ -d "${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}" ]; then
+        scst_sysfs_write "del ${OCF_RESOURCE_INSTANCE}" ${SCST_BASE}/device_groups/mgmt || {
+            ocf_log err "Unable to delete device_group ${OCF_RESOURCE_INSTANCE}.";
+            exit $OCF_ERR_GENERIC
+        }
+    fi
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted device_group ${OCF_RESOURCE_INSTANCE}."
+
     # Delete the device definition for LU
     if [ -e "${SCST_BASE}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
         scst_sysfs_write "del_device ${OCF_RESOURCE_INSTANCE}" ${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}/mgmt || {
