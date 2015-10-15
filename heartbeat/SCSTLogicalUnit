@@ -434,7 +434,7 @@ SCSTLogicalUnit_acls() {
 
                     # Remove valid export from "clean-them-up"-array.
                     export_full_path="${ini_path}/${initiator}/luns/${OCF_RESKEY_lun}"
-                    for index in ${!exports_del[@]}; do
+                    for index in "${!exports_del[@]}"; do
                         if [ "${exports_del[$index]}" = "$export_full_path" ]; then
                         unset exports_del[$index]
                             break
@@ -443,7 +443,7 @@ SCSTLogicalUnit_acls() {
                 done
                 # Remove exports for the current LU, that are not allowed.
                 ocf_log debug "Cleanup acls for LUN ${OCF_RESKEY_lun}, target ${target} ini_group ${OCF_RESOURCE_INSTANCE}."
-                for exports in ${exports_del[@]}; do
+                for exports in "${exports_del[@]}"; do
                     if [ -d "${exports}" ]; then
                         # remove the lun from the ini_group
                         scst_sysfs_write "del ${OCF_RESKEY_lun}" ${exports}/../mgmt || {
@@ -457,7 +457,7 @@ SCSTLogicalUnit_acls() {
             stop)
                 # Clear the acls on stop of the lun.
                 ocf_log debug "Remove all exports for LUN ${OCF_RESKEY_lun}, target ${target}."
-                for exports in ${exports_del[@]}; do
+                for exports in "${exports_del[@]}"; do
                     if [ -d "${exports}" ]; then
                         scst_sysfs_write "del ${OCF_RESKEY_lun}" ${exports}/../mgmt || {
                             ocf_log err "Unable to unexport LUN ${OCF_RESKEY_lun} - ${exports}";
