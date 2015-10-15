@@ -851,26 +851,32 @@ SCSTLogicalUnit_demote() {
     rc=$?
 
     case $rc in
-    $OCF_RUNNING_MASTER)
-        update_alua_access_state $HOSTNAME standby || {
-            ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+        $OCF_RUNNING_MASTER)
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - currently in Master state, TPG $HOSTNAME is active/preferred"
+            ;;
+        $OCF_NOT_RUNNING)
+            ocf_log error "ALUA: Trying to demote resource ${OCF_RESOURCE_INSTANCE} that is not running!"
+            # Resource is down? ... not expected to receive
+            # a demote in this state, error out.
             exit $OCF_ERR_GENERIC
-        }
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
-        ;;
-    $OCF_NOT_RUNNING)
-        ocf_log error "ALUA - Trying to demote a resource that was not started"
-        break
-        ;;
-    $OCF_SUCCESS)
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - Demotion was successful"
-        rc=$OCF_SUCCESS
-        break
-        ;;
-        esac
-    sleep 3
+            ;;
+        $OCF_SUCCESS)
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - already in Slave state, TPG $HOSTNAME is in standby mode"
+            return $OCF_SUCCESS
+            ;;
+        *)
+            ocf_log error "Unexpected error, unable to demote TPG $HOSTNAME for LU ${OCF_RESOURCE_INSTANCE}."
+            exit $rc
+    esac
 
-    return $rc
+    # Now do the demotion
+    update_alua_access_state $HOSTNAME standby || {
+        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+        exit $OCF_ERR_GENERIC
+    }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
+
+    return $OCF_SUCCESS
 }
 
 SCSTLogicalUnit_notify() {
