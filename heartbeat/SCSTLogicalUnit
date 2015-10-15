@@ -501,11 +501,13 @@ SCSTLogicalUnit_start() {
     local all_params
     local dev_path
     local dev_group
+    local group_id
     local index
     local initiator
     local ini_path
     local handler_path
     local param
+    local rel_tgt_id
     local target
     local tpg
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
@@ -621,18 +623,18 @@ SCSTLogicalUnit_start() {
 
             # Set the id for ALUA TPG
             if [ -d "${dev_group}/target_groups/${tpg}" ]; then
-                scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/group_id || {
-                    ocf_log err "Unable to set id ${index} for TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                scst_sysfs_write "${group_id}" ${dev_group}/target_groups/${tpg}/group_id || {
+                    ocf_log err "Unable to set id ${group_id} for TPG ${tpg} and device_group ${OCF_RESOURCE_INSTANCE}.";
                     exit $OCF_ERR_GENERIC
                 }
-                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${index} for TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}."
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${group_id} for TPG ${tpg} and device_group ${OCF_RESOURCE_INSTANCE}."
                
                 # By default the TPG is not preferred and in standby mode
                 scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
-                    ocf_log err "Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                    ocf_log err "Unable to set \"preferred\" to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 }
                 scst_sysfs_write "standby" ${dev_group}/target_groups/${tpg}/state || {
-                    ocf_log err "Unable to set state to standby - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                    ocf_log err "Unable to set state to \"standby\" - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is standby/not preferred."
 
@@ -642,13 +644,7 @@ SCSTLogicalUnit_start() {
                     rel_tgt_id=$(( $(get_index ${tpg} "${OCF_RESKEY_alua_tpg}") + 1 + \
                                   ($(get_index ${target} "$(${CRM_ATTR_GET_TGT} ${tpg})") * 1000) ))
                     if [ -d "${dev_group}/target_groups/${tpg}" ]; then
-                        scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/group_id || {
-                            ocf_log err "Unable to set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}.";
-                            exit $OCF_ERR_GENERIC
-                        }
-                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
-
-                        if [ ! -L "${dev_group}/target_groups/${tpg}/${target}" ]; then
+                        if [ ! -e "${dev_group}/target_groups/${tpg}/${target}" ]; then
                             scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
                                 ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
                                 exit $OCF_ERR_GENERIC
@@ -657,16 +653,15 @@ SCSTLogicalUnit_start() {
                         fi
 
                         if [ -d "${dev_group}/target_groups/${tpg}/${target}" ]; then
-                            scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
-                                ocf_log err "Unable to set relative target id ${index} for target ${target} - device_group ${OCF_RESOURCE_INSTANCE}.";
+                            scst_sysfs_write "${rel_tgt_id}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
+                                ocf_log err "Unable to set relative target id ${rel_tgt_id} for target ${target} - device_group ${OCF_RESOURCE_INSTANCE}.";
                                 exit $OCF_ERR_GENERIC
                             }
-                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${index} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
+                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${rel_tgt_id} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
                         fi
                    fi 
                 done
             fi
-            index++
         done
     fi
 
