@@ -79,6 +79,7 @@ fi
 # For convenience
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
+CRM_ATTR_GET_TGT="${HA_SBIN_DIR}/crm_attribute --quiet --query --name local_${OCF_RESKEY_fabric}_targets --node"
 
 # Lockfile, for LUs starting in parallel
 LOCKFILE=${HA_RSCTMP}/SCSTLogicalUnit.lock
@@ -284,6 +285,18 @@ scst_sysfs_write() {
     scst_sysfs_read /sys/kernel/scst_tgt/last_sysfs_mgmt_res >/dev/null
 }
 
+get_index() {
+    local index
+    declare -a array=( $(echo -n ${2}) )
+
+    for (( index = 0; index < ${#array[@]}; index++ )); do
+        if [ "${array[$index]}" == "$1" ]; then
+            echo $index
+            break
+        fi
+    done
+}
+
 update_alua_access_state() {
     local tpg="$1"
     local dev_group="${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}"
@@ -321,16 +334,12 @@ update_master_score() {
     local index
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
     score=0
+    index=$(get_index ${HOSTNAME} "${OCF_RESKEY_alua_tpg}")
 
     # We have an array with all TPGs, the left most
     # one receeives the highest score. TPGs must be named
     # like the node names in Pacemaker.
-    for (( index = 0; index < ${#tpgs[@]}; index++ )); do
-        if [ "${tpgs[$index]}" = "$HOSTNAME" ]; then
-            score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
-            break
-        fi
-    done
+    score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
 
     ocf_log debug "Setting master score to $score"
     if [ $score -gt 0 ]; then
@@ -354,6 +363,7 @@ SCSTLogicalUnit_acls() {
     declare -a exports_del
     local export_full_path
     local exports
+    local index
     local initiator
     local init_path
     local session
@@ -595,8 +605,11 @@ SCSTLogicalUnit_start() {
 
         # The TPGs have to be named exactly as the node names (as Pacemaker uses it)
         # for "multi-node targets". The position decides about the TPG id.
-        index=1
-        for tpg in "${tpgs}"; do
+        for tpg in "${tpgs[@]}"; do
+            # Automatically generate group_id for each TPG
+            # lun_id + ( "position of tpg in list" * 1000 )
+            group_id=$(( ${OCF_RESKEY_lun} + ($(get_index ${tpg} "${OCF_RESKEY_alua_tpg}") * 1000) ))
+
             # Create the TPGs, one for each node
             if [ ! -d "${dev_group}/target_groups/${tpg}" ]; then
                 scst_sysfs_write "create ${tpg}" ${dev_group}/target_groups/mgmt || {
@@ -623,9 +636,11 @@ SCSTLogicalUnit_start() {
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is standby/not preferred."
 
-                # Add all targets to the target group,
-                # use the target id also for the relative id
-                for target in ${OCF_RESKEY_target_id}; do
+                for target in "$(${CRM_ATTR_GET_TGT} ${tpg})"; do
+                    # We need a unique rel_tgt_id for every port in the TPG,
+                    # also for multiple ports per node.
+                    rel_tgt_id=$(( $(get_index ${tpg} "${OCF_RESKEY_alua_tpg}") + 1 + \
+                                  ($(get_index ${target} "$(${CRM_ATTR_GET_TGT} ${tpg})") * 1000) ))
                     if [ -d "${dev_group}/target_groups/${tpg}" ]; then
                         scst_sysfs_write "${index}" ${dev_group}/target_groups/${tpg}/group_id || {
                             ocf_log err "Unable to set id ${index} for TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}.";
