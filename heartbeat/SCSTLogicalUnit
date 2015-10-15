@@ -1066,6 +1066,9 @@ case $__OCF_ACTION in
     demote)
         SCSTLogicalUnit_demote
         ;;
+    notify)
+        SCSTLogicalUnit_notify
+        ;;
     validate-all)
         ;;
     *)
