@@ -523,7 +523,6 @@ SCSTLogicalUnit_start() {
     local rel_tgt_id
     local target
     local tpg
-    declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
@@ -598,6 +597,10 @@ SCSTLogicalUnit_start() {
 
     # Prepare for ALUA if configured
     if [ -n "${OCF_RESKEY_alua_tpg}" ]; then
+        # Sort the tpgs so we can later
+        # apply "rel_tgt_id"s in a consistent way.
+        declare -a tpgs=( $(for tpg in ${OCF_RESKEY_alua_tpg}; do echo ${tpg};done | sort -bdf) )
+
         # For ALUA, create create a device group for this lun
         # and assign a device to the group
         dev_group="${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}"
@@ -623,7 +626,7 @@ SCSTLogicalUnit_start() {
         for tpg in "${tpgs[@]}"; do
             # Automatically generate group_id for each TPG
             # lun_id + ( "position of tpg in list" * 1000 )
-            group_id=$(( ${OCF_RESKEY_lun} + ($(get_index ${tpg} "${OCF_RESKEY_alua_tpg}") * 1000) ))
+            group_id=$(( ${OCF_RESKEY_lun} + ($(get_index ${tpg} "${tpgs[*]}") * 1000) ))
 
             # Create the TPGs, one for each node
             if [ ! -d "${dev_group}/target_groups/${tpg}" ]; then
@@ -651,11 +654,14 @@ SCSTLogicalUnit_start() {
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is standby/not preferred."
 
-                for target in "$(${CRM_ATTR_GET_TGT} ${tpg})"; do
+                # Sort the targets in local_targets (like the TPGs) so we can
+                # apply "rel_tgt_id"s in a consistent way.
+                declare -a local_targets=( $(for target in $(${CRM_ATTR_GET_TGT} ${tpg}); do echo ${target};done | sort -bdf) )
+                for target in "${local_targets[@]}"; do
                     # We need a unique rel_tgt_id for every port in the TPG,
                     # also for multiple ports per node.
-                    rel_tgt_id=$(( $(get_index ${tpg} "${OCF_RESKEY_alua_tpg}") + 1 + \
-                                  ($(get_index ${target} "$(${CRM_ATTR_GET_TGT} ${tpg})") * 1000) ))
+                    rel_tgt_id=$(( ($(get_index ${tpg} "${tpgs[*]}") * 1000 ) + \
+                                   ($(get_index ${target} "${local_targets[*]}") + 1 ) ))
                     if [ -d "${dev_group}/target_groups/${tpg}" ]; then
                         if [ ! -e "${dev_group}/target_groups/${tpg}/${target}" ]; then
                             scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
@@ -885,6 +891,9 @@ SCSTLogicalUnit_demote() {
         exit $OCF_ERR_GENERIC
     }
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
+
+    # Do another flush to be sure
+    flushbufs
 
     return $OCF_SUCCESS
 }
