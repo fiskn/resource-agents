@@ -89,8 +89,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTLogicalUnit" version="0.1.1">
-<version>0.1.1</version>
+<resource-agent name="SCSTLogicalUnit" version="0.2.0">
+<version>0.2.0</version>
 
 <longdesc lang="en">
 Manages a Logical Unit for a SCST target. A Logical unit is a subdivision of 
@@ -233,9 +233,9 @@ implicitly using target-side configFS operations.
 <action name="start"        timeout="60" />
 <action name="stop"         timeout="60" />
 <action name="promote"      timeout="60" />
-<action name="demote"       timeout="60" />
+<action name="demote"       timeout="300" />
 <action name="notify"       timeout="60" />
-<action name="stop"         timeout="120" />
+<action name="stop"         timeout="300" />
 <action name="monitor"      depth="0" timeout="20" interval="10" />
 <action name="monitor"      depth="0" timeout="20" interval="20" role="Slave" />
 <action name="monitor"      depth="0" timeout="20" interval="10" role="Master" />
@@ -883,16 +883,13 @@ SCSTLogicalUnit_demote() {
     esac
 
     # Now do the demotion
-    # In case of a block device, flush any outstanding I/O to the device
-    flushbufs
-
     update_alua_access_state $HOSTNAME standby || {
         ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
         exit $OCF_ERR_GENERIC
     }
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
 
-    # Do another flush to be sure
+    # In case of a block device, flush any outstanding I/O to the device
     flushbufs
 
     return $OCF_SUCCESS
