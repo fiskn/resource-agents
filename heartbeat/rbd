@@ -138,7 +138,7 @@ find_rbd_dev() {
 
     # Run rbd showmapped, filter out the header line, then try to
     # extract the device name
-    rbd showmapped | tail -n +2 | sed -n -e "s,$sedpat,\1,p"
+    rbd showmapped 2>/dev/null | tail -n +2 | sed -n -e "s,$sedpat,\1,p"
 }
 
 rbd_validate_all() {
