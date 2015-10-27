@@ -589,7 +589,7 @@ SCSTLogicalUnit_start() {
     # Set the SCSI vendor id
     if [ -n "${OCF_RESKEY_vendor_id}" ]; then
         scst_sysfs_write "${OCF_RESKEY_vendor_id:0:8}" ${dev_path}/t10_vend_id || {
-            ocf_log err "Unable to set usn ${OCF_RESKEY_vendor_id:0:8} for device ${OCF_RESOURCE_INSTANCE}.";
+            ocf_log err "Unable to set t10_vend_id ${OCF_RESKEY_vendor_id:0:8} for device ${OCF_RESOURCE_INSTANCE}.";
             exit $OCF_ERR_GENERIC
         }
     fi
