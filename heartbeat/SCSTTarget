@@ -356,49 +356,32 @@ SCSTTarget_stop() {
         ocf_take_lock $LOCKFILE
         ocf_release_lock_on_exit $LOCKFILE
      
-	case $OCF_RESKEY_fabric in
-	    iscsi)
-                for ids in ${OCF_RESKEY_id}; do
-                    # The target dir is not available? Consider it stopped.
-                    if [ -d "${FABRIC_BASE}/${ids}" ]; then
-                        # Disable the target to prevent new connections
-                        scst_sysfs_write "0" "${FABRIC_BASE}/${ids}/enabled" || {
-                            ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
-                            exit $OCF_ERR_GENERIC
-                        }
-                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Disabled iSCSI target ${OCF_RESKEY_id}"
+        for ids in ${OCF_RESKEY_id}; do
+            # The target dir is not available? Consider it stopped.
+            if [ -d "${FABRIC_BASE}/${ids}" ]; then
+                # Disable the target to prevent new connections
+                scst_sysfs_write "0" "${FABRIC_BASE}/${ids}/enabled" || {
+                    ocf_log err "Unable to disable target ${OCF_RESKEY_id}.";
+                    exit $OCF_ERR_GENERIC
+                }
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: Disabled ${OCF_RESKEY_fabric} target ${OCF_RESKEY_id}"
 
-                        # Forcefully close all initiator sessions
-                        for session in $(ls -1 "${FABRIC_BASE}/${ids}/sessions"); do
-                            scst_sysfs_write "1" "${FABRIC_BASE}/${ids}/sessions/${session}/force_close"
-                            ocf_log warn "Forcefully closed session from initiator ${session}.";
-                        done
+                # Forcefully close all initiator sessions
+                for session in $(ls -1 "${FABRIC_BASE}/${ids}/sessions"); do
+                    scst_sysfs_write "1" "${FABRIC_BASE}/${ids}/sessions/${session}/force_close"
+                    ocf_log warn "Forcefully closed session from initiator ${session}.";
+                done
 
-                        # Delete the target
-                        scst_sysfs_write "del_target ${ids}" ${FABRIC_BASE}/mgmt || {
-                            ocf_log err "Unable to delete target ${ids}.";
-                            exit $OCF_ERR_GENERIC
-                        }
-                        ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${ids} deleted"
-                    fi
-                done
-		;;
-	    qla2x00t)
-                # Unfortunately older targetcli has no meaningfull
-                # return codes
-                for ids in ${OCF_RESKEY_id}; do
-	            echo -e "/qla2xxx delete ${ids}\nexit\nexit" | targetcli
-		    # This can take some seconds,
-                    # spin on monitor
-                done
-                rc=$OCF_SUCCESS
-                while [ $rc = $OCF_SUCCESS ]; do
-		    sleep 2
-                    SCSTTarget_monitor
-		    rc=$?
-                done
-		;;
-	esac
+                # Delete the target
+                if [ -e "${FABRIC_BASE}/mgmt" ]; then
+                    scst_sysfs_write "del_target ${ids}" ${FABRIC_BASE}/mgmt || {
+                        ocf_log err "Unable to delete target ${ids}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ${OCF_RESKEY_fabric} target ${ids} deleted"
+                fi
+            fi
+        done
     fi
     # If there is no subdirectory in the fabric base dir, no target of
     # this type is configured.
@@ -414,11 +397,13 @@ SCSTTarget_stop() {
             ocf_log debug "${OCF_RESOURCE_INSTANCE}: removed dummy device LUN0_${OCF_RESKEY_fabric} from ${OCF_RESKEY_fabric} fabric after last target was disabled."
         fi
         # Disable the fabric
-        scst_sysfs_write "0" "${FABRIC_BASE}/enabled" || {
-            ocf_log err "Unable to disable fabric of type ${OCF_RESKEY_fabric}.";
-            exit $OCF_ERR_GENERIC
-        }
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
+        if [ -e "${FABRIC_BASE}/enabled" ]; then
+            scst_sysfs_write "0" "${FABRIC_BASE}/enabled" || {
+                ocf_log err "Unable to disable fabric of type ${OCF_RESKEY_fabric}.";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
+        fi
     fi
 
     # Cleanup information for ALUA on target stop
