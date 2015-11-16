@@ -516,7 +516,7 @@ SCSTTarget_validate() {
 
     # Is the configured implementation supported?
     case "$OCF_RESKEY_fabric" in
-	"iscsi")
+	iscsi|qla2xxx)
 	    ;;
 	*)
 	    ocf_log error "Unsupported SCST fabric type \"${OCF_RESKEY_fabric}\"!"
