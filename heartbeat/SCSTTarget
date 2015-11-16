@@ -81,7 +81,7 @@ Manages SCST targets. A target is a daemon that speaks
 <parameter name="fabric" required="0" unique="0">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
-"qla2xxx". If unspecified, "iscsi" is used.
+"qla2x00t". If unspecified, "iscsi" is used.
 </longdesc>
 <shortdesc lang="en">Specifies the type of fabric</shortdesc>
 <content type="string" default="${OCF_RESKEY_fabric_default}"/>
@@ -383,7 +383,7 @@ SCSTTarget_stop() {
                     fi
                 done
 		;;
-	    qla2xxx)
+	    qla2x00t)
                 # Unfortunately older targetcli has no meaningfull
                 # return codes
                 for ids in ${OCF_RESKEY_id}; do
@@ -502,7 +502,7 @@ SCSTTarget_validate() {
     # Do we have all required variables?
     local required_vars
     case $OCF_RESKEY_fabric in
-	iscsi|qla2xxx)
+	iscsi|qla2x00t)
 	    required_vars="id"
 	;;
     esac
@@ -516,7 +516,7 @@ SCSTTarget_validate() {
 
     # Is the configured implementation supported?
     case "$OCF_RESKEY_fabric" in
-	iscsi|qla2xxx)
+	iscsi|qla2x00t)
 	    ;;
 	*)
 	    ocf_log error "Unsupported SCST fabric type \"${OCF_RESKEY_fabric}\"!"
@@ -530,7 +530,7 @@ SCSTTarget_validate() {
     local var
     local envar
     case $OCF_RESKEY_fabric in
-	iscsi|qla2xxx)
+	iscsi|qla2x00t)
 	    unsupported_params="tid incoming_username incoming_password"
 	    ;;
     esac
@@ -551,7 +551,7 @@ SCSTTarget_validate() {
 
     # Do we have all required binaries?
     case $OCF_RESKEY_fabric in
-        iscsi|qla2xxx)
+        iscsi|qla2x00t)
             check_binary modprobe
             check_binary rmmod
             check_binary find
