@@ -255,29 +255,27 @@ SCSTTarget_start() {
             fi
 
         ;;
-        qla2xxx)
+        qla2x00t)
             # Initiate the fabric if needed
-            if [ ! -d /sys/kernel/config/target/${OCF_RESKEY_fabric} ]; then
-                for mod in fc qla2xxx; do
-                   ocf_run -q modprobe -s  tcm_${mod} || {
-                      ocf_log err "Unable to load tcm_${mod} module";
+            if [ ! -d "${FABRIC_BASE}" ]; then
+                for mod in qla2xxx_scst qla2x00tgt; do
+                   ocf_run -q modprobe -s $mod || {
+                      ocf_log err "Unable to load ${mod} module";
                       return $OCF_ERR_INSTALLED
                    }
-                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: tcm_${mod} module loaded."
-                   ocf_run -q mkdir -p /sys/kernel/config/target/${mod} || {
-                      ocf_log err "Unable to create $mod target configfs entry";
-                      return $OCF_ERR_INSTALLED
-                   }
-                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: $mod configfs entry created"
+                   ocf_log debug "${OCF_RESOURCE_INSTANCE}: ${mod} module loaded."
                 done
             fi
-            # no nice lio-utils support for FC targets
+
+            # Create the targets
             for ids in ${OCF_RESKEY_id}; do
-                ocf_run -q mkdir -p /sys/kernel/config/target/qla2xxx/${ids}/tpgt_1 || {
-                    ocf_log err "Unable to initialize FC target ${ids}";
-                    exit $OCF_ERR_GENERIC
-                }
-                ocf_log debug "${OCF_RESOURCE_INSTANCE}: FC target ${ids} initialized"
+                if [ ! -d "${FABRIC_BASE}/${ids}" ]; then
+                    scst_sysfs_write "add_target ${ids}" ${FABRIC_BASE}/mgmt || {
+                        ocf_log err "Unable to create target ${ids}.";
+                        exit $OCF_ERR_GENERIC
+                    }
+                    ocf_log debug "${OCF_RESOURCE_INSTANCE}: FC target ${OCF_RESKEY_id} initialized"
+                fi
             done
         ;;
     esac
@@ -332,11 +330,13 @@ SCSTTarget_start() {
     done
 
     # Be sure all Targets are finally enabled
-    scst_sysfs_write "1" "${FABRIC_BASE}/enabled" || {
-        ocf_log err "Unable to enable ${OCF_RESKEY_fabric} fabric.";
-        exit $OCF_ERR_GENERIC
-    }
-    ocf_log debug "${OCF_RESOURCE_INSTANCE}: Enabled ${OCF_RESKEY_fabric} fabric."
+    if [ -e "${FABRIC_BASE}/enabled" ]; then
+        scst_sysfs_write "1" "${FABRIC_BASE}/enabled" || {
+            ocf_log err "Unable to enable ${OCF_RESKEY_fabric} fabric.";
+            exit $OCF_ERR_GENERIC
+        }
+        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Enabled ${OCF_RESKEY_fabric} fabric."
+    fi
 
     # Write the local configured targets into CIB -
     # need this for ALUA TPGs
