@@ -523,7 +523,12 @@ SCSTLogicalUnit_start() {
     local rel_tgt_id
     local target
     local tpg
+    local tpg_base
 
+    case $OCF_RESKEY_fabric in
+        iscsi)    tpg_base=1 ;;
+        qla2x00t) tpg_base=10001 ;;
+    esac
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
 
@@ -661,7 +666,7 @@ SCSTLogicalUnit_start() {
                     # We need a unique rel_tgt_id for every port in the TPG,
                     # also for multiple ports per node.
                     rel_tgt_id=$(( ($(get_index ${tpg} "${tpgs[*]}") * 1000 ) + \
-                                   ($(get_index ${target} "${local_targets[*]}") + 1 ) ))
+                                   ($(get_index ${target} "${local_targets[*]}") + ${tpg_base} ) ))
                     if [ -d "${dev_group}/target_groups/${tpg}" ]; then
                         if [ ! -e "${dev_group}/target_groups/${tpg}/${target}" ]; then
                             scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
