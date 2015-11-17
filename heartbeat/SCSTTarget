@@ -422,11 +422,13 @@ SCSTTarget_monitor() {
     # and if the sysfs entry is here at all.
     # in either case, consider ist stopped
     ocf_log debug "${OCF_RESOURCE_INSTANCE}: Check if fabric of type ${OCF_RESKEY_fabric} is loaded and enabled.";
-    if [ -e ${FABRIC_BASE}/enabled ]; then
-        [ `scst_sysfs_read ${FABRIC_BASE}/enabled` -eq 1 ] || {
-            ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not enabled.";
-            return $OCF_NOT_RUNNING
-        }
+    if [ -d ${FABRIC_BASE} ]; then
+        if [ -e ${FABRIC_BASE}/enabled ]; then
+            [ `scst_sysfs_read ${FABRIC_BASE}/enabled` -eq 1 ] || {
+                ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not enabled.";
+                return $OCF_NOT_RUNNING
+            }
+        fi
     else
         ocf_log debug "Fabric of type ${OCF_RESKEY_fabric} not loaded.";
         return $OCF_NOT_RUNNING
