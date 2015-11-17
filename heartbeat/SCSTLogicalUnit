@@ -378,7 +378,7 @@ SCSTLogicalUnit_acls() {
     local exports
     local index
     local initiator
-    local init_path
+    local ini_path
     local session
     local target
 
