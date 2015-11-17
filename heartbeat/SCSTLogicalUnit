@@ -102,7 +102,7 @@ a Target, exported via a daemon that speaks a specific protocol.
 <parameter name="fabric" required="0" unique="1">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
-"qla2xxx". If unspecified, "iscsi" is used.
+"qla2x00t". If unspecified, "iscsi" is used.
 </longdesc>
 <shortdesc lang="en">The type of fabric</shortdesc>
 <content type="string" default="${OCF_RESKEY_fabric_default}"/>
@@ -112,7 +112,7 @@ The SCST target supports several fabric types. Must be one of "iscsi" or
 <longdesc lang="en">
 A white-space separated list of targets this Logical Unit belongs to. 
 For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
-Fibre Channel (qla2xxx) targets use a World Wide Name (WWN) for
+Fibre Channel (qla2x00t) targets use a World Wide Name (WWN) for
 identification.
 </longdesc>
 <shortdesc lang="en">Target identifier</shortdesc>
@@ -694,7 +694,7 @@ SCSTLogicalUnit_start() {
 
 SCSTLogicalUnit_reload() {
     case $OCF_RESKEY_fabric in
-	iscsi|qla2xxx)
+	iscsi|qla2x00t)
             SCSTLogicalUnit_start
 	    ;;
     esac
