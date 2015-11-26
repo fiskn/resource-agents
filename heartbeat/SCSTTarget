@@ -68,8 +68,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.1.1">
-<version>0.1.1</version>
+<resource-agent name="SCSTTarget" version="0.3.0">
+<version>0.3.0</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
