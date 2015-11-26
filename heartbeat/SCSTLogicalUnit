@@ -4,7 +4,7 @@
 #
 # Description: Resource Agent for highly available SCSTLogicalUnits.
 #              Requires installed SCST kernel module, utilities and
-#              a running SCST target. 
+#              a running SCST target.
 #
 # Author:      Andreas Kurz
 #
@@ -27,7 +27,7 @@
 . ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
 
 # Defaults
-# Set the iSCSI fabric as default 
+# Set the iSCSI fabric as default
 OCF_RESKEY_fabric_default="iscsi"
 : ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
 # Set default t10_vend_id
@@ -39,6 +39,11 @@ OCF_RESKEY_device_handler_default="vdisk_fileio"
 # By default no initiator is allowed to access a LU
 OCF_RESKEY_allowed_initiators_default=""
 : ${OCF_RESKEY_allowed_initiators=${OCF_RESKEY_allowed_initiators_default}}
+
+# Set the default path for LSI "storcli" tool to check availability
+# of virtual disk exported by LSI/Avago Synchro CS controller.
+OCF_RESKEY_storcli_binary_path_default="/opt/MegaRAID/storcli/storcli64"
+: ${OCF_RESKEY_storcli_binary_path=${OCF_RESKEY_storcli_binary_path_default}}
 
 # Use a default SCSI ID and SCSI SN that is unique across the cluster,
 # and persistent in the event of resource migration.
@@ -93,7 +98,7 @@ meta_data() {
 <version>0.3.0</version>
 
 <longdesc lang="en">
-Manages a Logical Unit for a SCST target. A Logical unit is a subdivision of 
+Manages a Logical Unit for a SCST target. A Logical unit is a subdivision of
 a Target, exported via a daemon that speaks a specific protocol.
 </longdesc>
 <shortdesc lang="en">Manages Logical Units (LUs) for SCST targets</shortdesc>
@@ -110,7 +115,7 @@ The SCST target supports several fabric types. Must be one of "iscsi" or
 
 <parameter name="target_id" required="1" unique="1">
 <longdesc lang="en">
-A white-space separated list of targets this Logical Unit belongs to. 
+A white-space separated list of targets this Logical Unit belongs to.
 For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
 Fibre Channel (qla2x00t) targets use a World Wide Name (WWN) for
 identification.
@@ -225,6 +230,27 @@ implicitly using target-side configFS operations.
 </longdesc>
 <shortdesc lang="en">SCST ALUA target port group name</shortdesc>
 <content type="string"/>
+</parameter>
+
+<parameter name="synchro_cs_vd_name" required="0" unique="1">
+<longdesc lang="en">
+Name of a shared virtual drive, exported by a LSI/Avago Synchro CS
+controller. This name must be the one set for the block device
+used as "path".
+</longdesc>
+<shortdesc lang="en">Name of a LSI/Avago Synchro CS shared,
+virtual drive</shortdesc>
+<content type="string"/>
+</parameter>
+
+<parameter name="storcli_binary_path" required="0" unique="0">
+<longdesc lang="en">
+Absolute path to the "storcli" management tool. This is needed
+to check the availability of shared virtual disks, exported by
+LSI/Avago Synchro CS controllers.
+</longdesc>
+<shortdesc lang="en">Absolute path to "storcli" binary</shortdesc>
+<content type="string" default="${OCF_RESKEY_storcli_binary_path_default}"/>
 </parameter>
 
 </parameters>
@@ -352,7 +378,22 @@ update_master_score() {
     # We have an array with all TPGs, the left most
     # one receeives the highest score. TPGs must be named
     # like the node names in Pacemaker.
-    score=$(( ( ${#tpgs[@]} - $index ) * 5 ));
+    score=$(( ( ${#tpgs[@]} - $index ) * 1000 ));
+
+    # Check availability of shared, virtual LSI/Avago Synchro
+    # CS drive.
+    if [ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]; then
+        vdname=$( ${STORCLI} /call/vall show | \
+            awk -v pattern="[[:space:]]+${OCF_RESKEY_synchro_cs_vd_name}[[:space:]]*$" \
+            '$0 ~ pattern {print $NF}' )
+        # The virtual drive is not available,
+        # demote the LUN but don't set score to
+        # zero.
+        if [ -z "${vdname}" ]; then
+            score=10
+            ocf_log debug "Virtual, shared drive ${OCF_RESKEY_synchro_cs_vd_name} not active/optimized on this node."
+        fi
+    fi
 
     ocf_log debug "Setting master score to $score"
     if [ $score -gt 0 ]; then
@@ -617,7 +658,7 @@ SCSTLogicalUnit_start() {
         fi
         ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created device_group ${OCF_RESOURCE_INSTANCE}."
 
-        # Add the device to its device_group 
+        # Add the device to its device_group
         if [ ! -e "${dev_group}/devices/${OCF_RESOURCE_INSTANCE}" ]; then
             scst_sysfs_write "add ${OCF_RESOURCE_INSTANCE}" ${dev_group}/devices/mgmt || {
                 ocf_log err "Unable to add device ${OCF_RESOURCE_INSTANCE} to device_group ${OCF_RESOURCE_INSTANCE}.";
@@ -649,7 +690,7 @@ SCSTLogicalUnit_start() {
                     exit $OCF_ERR_GENERIC
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${group_id} for TPG ${tpg} and device_group ${OCF_RESOURCE_INSTANCE}."
-               
+
                 # By default the TPG is not preferred and in standby mode
                 scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
                     ocf_log err "Unable to set \"preferred\" to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
@@ -683,7 +724,7 @@ SCSTLogicalUnit_start() {
                             }
                             ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${rel_tgt_id} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
                         fi
-                   fi 
+                   fi
                 done
             fi
         done
@@ -1006,7 +1047,7 @@ SCSTLogicalUnit_validate() {
 	envar=OCF_RESKEY_${var}
 	defvar=OCF_RESKEY_${var}_default
 	if [ -n "${!envar}" ]; then
-	    if  [[ "${!envar}" != "${!defvar}" ]];then 
+	    if  [[ "${!envar}" != "${!defvar}" ]];then
 	        case "$__OCF_ACTION" in
                     start|validate-all)
                       ocf_log warn "Configuration parameter \"${var}\"" \
@@ -1017,14 +1058,20 @@ SCSTLogicalUnit_validate() {
 	fi
     done
 
-    if ! ocf_is_probe; then
-        # Do we have all required binaries?
-	case $OCF_RESKEY_fabric in
-	    iscsi)
-                check_binary find
-                ;;
-	esac
+    # Do we have all required binaries?
+    case $OCF_RESKEY_fabric in
+        iscsi)
+            check_binary find
+            ;;
+    esac
+    # When exporting a shared virtual disk via
+    # LSI/Avago Synchro CS we need the storcli tool
+    # to check its availability.
+    if [[ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]]; then
+        check_binary "${OCF_RESKEY_storcli_binary_path}"
+    fi
 
+    if ! ocf_is_probe; then
         # Is the required kernel functionality available?
 	case $OCF_RESKEY_fabric in
 	    iscsi|qla2x00t)
