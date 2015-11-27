@@ -85,6 +85,7 @@ fi
 SCST_BASE="/sys/kernel/scst_tgt"
 FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
 CRM_ATTR_GET_TGT="${HA_SBIN_DIR}/crm_attribute --quiet --query --name local_${OCF_RESKEY_fabric}_targets --node"
+STORCLI="${OCF_RESKEY_storcli_binary_path}"
 
 # Lockfile, for LUs starting in parallel
 LOCKFILE=${HA_RSCTMP}/SCSTLogicalUnit.lock
@@ -371,6 +372,7 @@ update_alua_access_state() {
 update_master_score() {
     local score
     local index
+    local vdname
     declare -a tpgs=( $(echo -n ${OCF_RESKEY_alua_tpg}) )
     score=0
     index=$(get_index ${HOSTNAME} "${OCF_RESKEY_alua_tpg}")
@@ -392,6 +394,20 @@ update_master_score() {
         if [ -z "${vdname}" ]; then
             score=10
             ocf_log debug "Virtual, shared drive ${OCF_RESKEY_synchro_cs_vd_name} not active/optimized on this node."
+        fi
+    fi
+
+    # Check availability of shared, virtual LSI/Avago Synchro
+    # CS drive.
+    if [ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]; then
+        vdname=$( ${STORCLI} /call/vall show | \
+            awk -v pattern="[[:space:]]+$OCF_RESKEY_synchro_cs_vd_name[[:space:]]*$" \
+            '$0 ~ pattern {print $NF}' )
+        # The virtual drive is not available,
+        # demote the LUN
+        if [ -z "${vdname}" ]; then
+            score=0
+            ocf_log debug "Virtual, shared drive ${OCF_RESKEY_synchro_cs_vd_name} not available."
         fi
     fi
 
@@ -1068,7 +1084,8 @@ SCSTLogicalUnit_validate() {
     # LSI/Avago Synchro CS we need the storcli tool
     # to check its availability.
     if [[ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]]; then
-        check_binary "${OCF_RESKEY_storcli_binary_path}"
+        check_binary "${STORCLI}"
+        check_binary awk
     fi
 
     if ! ocf_is_probe; then
