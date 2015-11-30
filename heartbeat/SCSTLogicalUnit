@@ -397,20 +397,6 @@ update_master_score() {
         fi
     fi
 
-    # Check availability of shared, virtual LSI/Avago Synchro
-    # CS drive.
-    if [ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]; then
-        vdname=$( ${STORCLI} /call/vall show | \
-            awk -v pattern="[[:space:]]+$OCF_RESKEY_synchro_cs_vd_name[[:space:]]*$" \
-            '$0 ~ pattern {print $NF}' )
-        # The virtual drive is not available,
-        # demote the LUN
-        if [ -z "${vdname}" ]; then
-            score=0
-            ocf_log debug "Virtual, shared drive ${OCF_RESKEY_synchro_cs_vd_name} not available."
-        fi
-    fi
-
     ocf_log debug "Setting master score to $score"
     if [ $score -gt 0 ]; then
 	set_master_score $score
