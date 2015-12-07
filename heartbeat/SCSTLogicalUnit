@@ -87,6 +87,14 @@ FABRIC_BASE="${SCST_BASE}/targets/${OCF_RESKEY_fabric}"
 CRM_ATTR_GET_TGT="${HA_SBIN_DIR}/crm_attribute --quiet --query --name local_${OCF_RESKEY_fabric}_targets --node"
 STORCLI="${OCF_RESKEY_storcli_binary_path}"
 
+# LSI/Avago Synchro CS, secondary/non-owning
+# controller can also process I/O
+if [ -n ${OCF_RESKEY_synchro_cs_vd_name} ]; then
+    STANDBY="nonoptimized"
+else
+    STANDBY="standby"
+fi
+
 # Lockfile, for LUs starting in parallel
 LOCKFILE=${HA_RSCTMP}/SCSTLogicalUnit.lock
 #######################################################################
@@ -341,30 +349,26 @@ update_alua_access_state() {
     local tpg="$1"
     local dev_group="${SCST_BASE}/device_groups/${OCF_RESOURCE_INSTANCE}"
 
-    case $2 in
-        standby)
+    case "${2}" in
+        standby|nonoptimized)
             scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
                 ocf_log err "ALUA - Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
-            scst_sysfs_write "standby" ${dev_group}/target_groups/${tpg}/state || {
-                ocf_log err "ALUA - Unable to set state to standby - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE} - ALUA: TPG ${tpg} is standby/not preferred."
             ;;
         active)
             scst_sysfs_write "1" ${dev_group}/target_groups/${tpg}/preferred || {
-                ocf_log err "ALUA - Unable to set preferred to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                ocf_log err "ALUA - Unable to set preferred to 1 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 exit $OCF_ERR_GENERIC
             }
-            scst_sysfs_write "active" ${dev_group}/target_groups/${tpg}/state || {
-                ocf_log err "ALUA - Unable to set state to active - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
-                exit $OCF_ERR_GENERIC
-            }
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - TPG ${tpg} is active/preferred."
             ;;
     esac
+
+    scst_sysfs_write "${2}" ${dev_group}/target_groups/${tpg}/state || {
+        ocf_log err "ALUA - Unable to set state to ${2} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+        exit $OCF_ERR_GENERIC
+    }
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - TPG ${tpg} is in ${2} state."
 
     return $OCF_SUCCESS
 }
@@ -693,14 +697,14 @@ SCSTLogicalUnit_start() {
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set id ${group_id} for TPG ${tpg} and device_group ${OCF_RESOURCE_INSTANCE}."
 
-                # By default the TPG is not preferred and in standby mode
+                # By default the TPG is not preferred and in standby or unoptimized mode
                 scst_sysfs_write "0" ${dev_group}/target_groups/${tpg}/preferred || {
                     ocf_log err "Unable to set \"preferred\" to 0 - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 }
-                scst_sysfs_write "standby" ${dev_group}/target_groups/${tpg}/state || {
-                    ocf_log err "Unable to set state to \"standby\" - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
+                scst_sysfs_write "${STANDBY}" ${dev_group}/target_groups/${tpg}/state || {
+                    ocf_log err "Unable to set state to \"${STANDBY}\" - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
                 }
-                ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is standby/not preferred."
+                ocf_log debug "${OCF_RESOURCE_INSTANCE}: TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE} is ${STANDBY}."
 
                 # Sort the targets in local_targets (like the TPGs) so we can
                 # apply "rel_tgt_id"s in a consistent way.
@@ -797,7 +801,7 @@ SCSTLogicalUnit_monitor() {
 
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
-    alua_state="standby"
+    alua_state="${STANDBY}"
     index=${#ids[@]}
 
     # If our backing device (or file) doesn't even exist, we're not running
@@ -845,7 +849,7 @@ SCSTLogicalUnit_monitor() {
                     update_master_score
                     return $OCF_RUNNING_MASTER
                     ;;
-                standby)
+                standby|nonoptimized)
                     update_master_score
                     return $OCF_SUCCESS
                     ;;
@@ -881,7 +885,7 @@ SCSTLogicalUnit_promote() {
 
     case $rc in
         $OCF_SUCCESS)
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - currently in Slave state, TPG $HOSTNAME is standby/not-preferred"
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - currently in Slave state, TPG $HOSTNAME is ${STANDBY}/not-preferred"
             ;;
         $OCF_NOT_RUNNING)
             ocf_log info "ALUA: Trying to promote resource ${OCF_RESOURCE_INSTANCE} that is not running, start it ..."
@@ -922,7 +926,7 @@ SCSTLogicalUnit_demote() {
             exit $OCF_ERR_GENERIC
             ;;
         $OCF_SUCCESS)
-            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - already in Slave state, TPG $HOSTNAME is in standby mode"
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - already in Slave state, TPG $HOSTNAME is in ${STANDBY} mode"
             return $OCF_SUCCESS
             ;;
         *)
@@ -931,11 +935,11 @@ SCSTLogicalUnit_demote() {
     esac
 
     # Now do the demotion
-    update_alua_access_state $HOSTNAME standby || {
-        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to standby!";
+    update_alua_access_state $HOSTNAME ${STANDBY} || {
+        ocf_log error "Unable to set ALUA access state for lun_${OCF_RESKEY_lun}/${OCF_RESOURCE_INSTANCE} to ${STANDBY}!";
         exit $OCF_ERR_GENERIC
     }
-    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now standby"
+    ocf_log debug "${OCF_RESOURCE_INSTANCE}: ALUA - demote was successfull, TPG $HOSTNAME is now ${STANDBY}"
 
     # In case of a block device, flush any outstanding I/O to the device
     flushbufs
@@ -967,6 +971,9 @@ SCSTLogicalUnit_notify() {
                     for instance in $master; do
                          update_alua_access_state $instance active
                     done
+                else
+                    # Be sure to set correct slave mode
+                    update_alua_access_state $node ${STANDBY}
                 fi
             done
             ;;
@@ -979,7 +986,7 @@ SCSTLogicalUnit_notify() {
         post/demote)
             for node in $demoteit; do
                 # Switch all new slave instances TPG to standby
-                update_alua_access_state $node standby
+                update_alua_access_state $node ${STANDBY}
             done
             ;;
         post/stop)
@@ -987,8 +994,8 @@ SCSTLogicalUnit_notify() {
             for node in $stopit; do
                 if [ "$node" != "$HOSTNAME" ]; then
                     # Another node stopped the resource,
-                    # its TPGs are definitely standby.
-                    update_alua_access_state $node standby
+                    # its TPGs are definitely offline
+                    update_alua_access_state $node offline
                 fi
             done
             ;;
