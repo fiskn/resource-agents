@@ -31,7 +31,7 @@
 OCF_RESKEY_fabric_default="iscsi"
 : ${OCF_RESKEY_fabric=${OCF_RESKEY_fabric_default}}
 # Set default t10_vend_id
-OCF_RESKEY_vendor_id_default="STORCIUM"
+OCF_RESKEY_vendor_id_default="SCST"
 : ${OCF_RESKEY_vendor_id=${OCF_RESKEY_vendor_id_default}}
 # Set the default SCST device handler
 OCF_RESKEY_device_handler_default="vdisk_fileio"
