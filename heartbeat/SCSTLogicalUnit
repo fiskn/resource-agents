@@ -573,8 +573,8 @@ SCSTLogicalUnit_start() {
     local tpg_base
 
     case $OCF_RESKEY_fabric in
-        iscsi)    tpg_base=1 ;;
-        qla2x00t) tpg_base=10001 ;;
+        iscsi)    tpg_base=10001 ;;
+        qla2x00t) tpg_base=20001 ;;
     esac
     handler_path="${SCST_BASE}/handlers/${OCF_RESKEY_device_handler}"
     dev_path="${handler_path}/${OCF_RESOURCE_INSTANCE}"
