@@ -89,7 +89,7 @@ STORCLI="${OCF_RESKEY_storcli_binary_path}"
 
 # LSI/Avago Synchro CS, secondary/non-owning
 # controller can also process I/O
-if [ -n ${OCF_RESKEY_synchro_cs_vd_name} ]; then
+if [ -n "${OCF_RESKEY_synchro_cs_vd_name}" ]; then
     STANDBY="nonoptimized"
 else
     STANDBY="standby"
