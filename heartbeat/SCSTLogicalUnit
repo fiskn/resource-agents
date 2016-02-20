@@ -2,15 +2,15 @@
 #
 # SCSTLogicalUnit
 #
-# Description: Resource Agent for highly available SCSTLogicalUnits.
-#              Requires installed SCST kernel module, utilities and
-#              a running SCST target.
+# Description:  Resource Agent for highly available SCSTLogicalUnits.
+#               Requires installed SCST kernel module, utilities and
+#               a running SCST target.
 #
-# Author:      Andreas Kurz
+# Author:       Andreas Kurz
 #
-# License:     GNU General Public License (GPL)
+# License:      GNU General Public License (GPL)
 #
-# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+# (c) 2015-2016 Andreas Kurz <andreas.kurz AT gmail DOT com>
 #
 # This resource agent is derived from the iSCSITarget resource
 # agent, which itself is made available to the public under the
@@ -337,7 +337,7 @@ get_index() {
 
 flushbufs() {
     if [ -b $OCF_RESKEY_path ]; then
-        ocf_log debug "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
+        ocf_log info "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
         # This can really take some time, allow other LUNs
         # to take the lock
         [ -e "$LOCKFILE" ] && ocf_run rm -vf $LOCKFILE
