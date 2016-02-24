@@ -776,6 +776,8 @@ SCSTLogicalUnit_start() {
         done
     fi
 
+    # Make sure the device is unblocked.
+    unblock_dev
     # export the LU to all allowed initiators
     SCSTLogicalUnit_acls
 
@@ -800,6 +802,9 @@ SCSTLogicalUnit_stop() {
     local initiator
 
     SCSTLogicalUnit_monitor
+    # For a more gracefull stop, block the device before
+    # starting to deconfigure it.
+    block_dev
     SCSTLogicalUnit_acls
 
     # Delete the device_group definition for LU
