@@ -5,7 +5,7 @@
 #
 #   License:      GNU Lesser General Public License (LGPL) 2.1
 #   (c) 2012 Florian Haas, hastexo
-#
+#   (c) 2015-2016 Andreas Kurz <andreas.kurz AT gmail DOT com>
 
 # Initialization:
 : ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
@@ -26,8 +26,8 @@ rbd_meta_data() {
     cat <<EOF
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="rbd" version="0.2">
-  <version>0.2</version>
+<resource-agent name="rbd" version="0.2.1">
+  <version>0.2.1</version>
   <longdesc lang="en">
 Manages RADOS Block Devices (RBDs) as a highly available
 resource. Maps and unmaps RBDs as needed.
@@ -250,9 +250,8 @@ rbd_stop() {
     # spin on the monitor function here -- if the resource does not
     # shut down within the defined timeout, the cluster manager will
     # consider the stop action failed
-    rbd_dev=`find_rbd_dev`
-
     while rbd_monitor; do
+        rbd_dev=`find_rbd_dev`
         do_rbd unmap $rbd_dev
         ocf_log debug "Resource has not stopped yet, waiting"
         sleep 2
