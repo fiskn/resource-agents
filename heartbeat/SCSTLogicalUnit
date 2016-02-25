@@ -402,6 +402,7 @@ update_alua_access_state() {
     # If desired state is already set, don't block/unblock the device
     if [ "$(scst_sysfs_read ${dev_group}/target_groups/${tpg}/state)" != ${2} ]; then
         block_dev
+        flushbufs
         scst_sysfs_write "${2}" ${dev_group}/target_groups/${tpg}/state || {
             ocf_log err "ALUA - Unable to set state to ${2} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}.";
             exit $OCF_ERR_GENERIC
