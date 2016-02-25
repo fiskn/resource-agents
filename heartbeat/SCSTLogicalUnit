@@ -337,7 +337,7 @@ get_index() {
 
 flushbufs() {
     if [ -b $OCF_RESKEY_path ]; then
-        ocf_log info "${OCF_RESOURCE_INSTANCE}: Flush outstanding I/O to device ${OCF_RESKEY_path}."
+        ocf_log info "${OCF_RESOURCE_INSTANCE}: Flushing outstanding I/Os to device ${OCF_RESKEY_path}..."
         # This can really take some time, allow other LUNs
         # to take the lock
         [ -e "$LOCKFILE" ] && ocf_run rm -vf $LOCKFILE
@@ -580,7 +580,7 @@ SCSTLogicalUnit_acls() {
                 done
                 # Delete the ini_group
                 scst_sysfs_write "del ${initiator##*/}" ${FABRIC_BASE}/${target}/ini_groups/mgmt || {
-                     ocf_log err "Unable to delete empty initiator group ${initiator##*/} from target ${target}.";
+                     ocf_log err "Unable to delete initiator group ${initiator##*/} from target ${target}.";
                      exit $OCF_ERR_GENERIC
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted empty initiator group ${initiator##*/} from target ${target}."
