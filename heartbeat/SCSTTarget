@@ -121,6 +121,48 @@ dependent. Neither the name nor the value may contain whitespace.
 <content type="string" />
 </parameter>
 
+<parameter name="iscsi_incoming_user" required="0" unique="0">
+<longdesc lang="en">
+A space-separated list of "username:::password" pairs to restrict
+incoming target access. This will be ignored for all but iSCSI targets.
+Passwords must be at least 12 bytes long. Usernames and passwords must
+not contain spaces.
+</longdesc>
+<shortdesc lang="en">Incoming iSCSI username:::password pairs</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_outgoing_user" required="0" unique="0">
+<longdesc lang="en">
+An outgoing "username:::password" pair for mutual authentication. This will be
+ignored for all but iSCSI targets. The Password must be at least 12 bytes long.
+Username and password must not contain spaces.
+</longdesc>
+<shortdesc lang="en">Outgoing iSCSI username:::password pair</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_incoming_user_discovery" required="0" unique="0">
+<longdesc lang="en">
+A space-separated list of "username:::password" pairs to restrict
+incoming target discovery requests. This will be ignored for all but
+iSCSI targets. Passwords must be at least 12 bytes long. Usernames and
+passwords must not contain spaces.
+contain space.
+</longdesc>
+<shortdesc lang="en">Incoming iSCSI discovery username:::password pairs</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_outgoing_user_discovery" required="0" unique="0">
+<longdesc lang="en">
+An outgoing "username:::password" pair for mutual authentication of target
+discovery requests. This will be ignored for all but iSCSI targets. The Password
+must be at least 12 bytes long. Username and password must not contain spaces.
+</longdesc>
+<shortdesc lang="en">Outgoing iSCSI discovery username:::password pair</shortdesc>
+<content type="string" />
+</parameter>
 </parameters>
 
 <actions>
@@ -517,8 +559,11 @@ SCSTTarget_validate() {
     local var
     local envar
     case $OCF_RESKEY_fabric in
-	iscsi|qla2x00t)
-	    unsupported_params="tid incoming_username incoming_password"
+	qla2x00t)
+	    unsupported_params="iscsi_incoming_user \
+                                iscsi_outgoing_user \
+                                iscsi_incoming_user_discovery \
+                                iscsi_outgoing_user_discovery"
 	    ;;
     esac
     for var in ${unsupported_params}; do
