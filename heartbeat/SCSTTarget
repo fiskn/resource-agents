@@ -221,6 +221,39 @@ get_index() {
     done
 }
 
+# Add users from $1 and of type $2 to authenticate discovery.
+# If $3 is specified it must be an existing target_id.
+add_users() {
+    local index
+    local pair
+    local user
+    local passwd
+    local attribute="add_attribute"
+    # Sort the users for creation to allow ordered deletion
+    declare -a array=( $(for user in ${1}; do echo ${user};done | sort -bdf) )
+
+    # If a third parameter is defined it has to be
+    # a specific target
+    [ -n "${3}" ] && attribute="add_target_attribute ${3}"
+
+    for pair in "${array[@]}"; do
+        user="${pair%%:::*}"
+        passwd="${pair##*:::}"
+        # If the username already exists skip creation
+        if grep -Eq "^${user}[[:space:]]{1}" ${FABRIC_BASE}/${3}/${2}* 2>/dev/null; then
+            ocf_log warn "${OCF_RESOURCE_INSTANCE}: The ${2} \"${user}\" already exists - skipping."
+        else
+            index=$(get_index "${pair}" "${array[@]}")
+            [ ${index} -eq 0 ] && index=""
+            scst_sysfs_write "${attribute} ${2}${index} ${user} ${passwd}" ${FABRIC_BASE}/mgmt || {
+                ocf_log err "Unable to add ${2} \"${user}\".";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created ${2} \"${user}\"."
+        fi
+    done
+}
+
 SCSTTarget_usage() {
 	cat <<END
 usage: $0 {start|stop|status|monitor|validate-all|meta-data}
@@ -286,6 +319,14 @@ SCSTTarget_start() {
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi_scst module loaded."
             fi
 
+            # Configure incoming/outgoing users for discovery
+            if [ -n "${OCF_RESKEY_iscsi_incoming_user_discovery}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_incoming_user_discovery}" IncomingUser
+            fi
+            if [ -n "${OCF_RESKEY_iscsi_outgoing_user_discovery}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_outgoing_user_discovery}" OutgoingUser
+            fi
+
             # Create the target
             if [ ! -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
                 scst_sysfs_write "add_target ${OCF_RESKEY_id}" ${FABRIC_BASE}/mgmt || {
@@ -293,6 +334,14 @@ SCSTTarget_start() {
                     exit $OCF_ERR_GENERIC
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} initialized"
+            fi
+
+            # Configure incoming/outgoing users
+            if [ -n "${OCF_RESKEY_iscsi_incoming_user}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_incoming_user}" IncomingUser "${OCF_RESKEY_id}"
+            fi
+            if [ -n "${OCF_RESKEY_iscsi_outgoing_user}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_outgoing_user}" OutgoingUser "${OCF_RESKEY_id}"
             fi
 
             # Define allowed portals
