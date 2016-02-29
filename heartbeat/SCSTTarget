@@ -209,6 +209,18 @@ scst_sysfs_write() {
     scst_sysfs_read /sys/kernel/scst_tgt/last_sysfs_mgmt_res >/dev/null
 }
 
+get_index() {
+    local index
+    declare -a array=( $(echo -n ${2}) )
+
+    for (( index = 0; index < ${#array[@]}; index++ )); do
+        if [ "${array[$index]}" == "$1" ]; then
+            echo $index
+            break
+        fi
+    done
+}
+
 SCSTTarget_usage() {
 	cat <<END
 usage: $0 {start|stop|status|monitor|validate-all|meta-data}
