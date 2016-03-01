@@ -2,13 +2,13 @@
 #
 # iscsi-scstd
 #
-# Description: Manages the user-land daemon iscsi-scstd for SCST targets.
+# Description:  Manages the user-land daemon iscsi-scstd for SCST targets.
 #
-# Author:      Andreas Kurz
+# Author:       Andreas Kurz
 #
-# License:     GNU General Public License (GPL)
+# License:      GNU General Public License (GPL)
 #
-# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+# (c) 2015-2016 Andreas Kurz <andreas.kurz AT gmail DOT com>
 #
 # See usage() function below for more details ...
 #
@@ -31,8 +31,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="iscsi-scstd" version="0.1">
-<version>0.1</version>
+<resource-agent name="iscsi-scstd" version="0.2">
+<version>0.2</version>
 
 <longdesc lang="en">
 This is an iscsi-scstd Resource Agent. The iscsi-scstd program
@@ -116,6 +116,11 @@ iscsidSCST_stop() {
 
     # Now really try to stop the daemon 
     ocf_stop_processes TERM $tmout $pid || return $OCF_ERR_GENERIC
+ 
+    # Try to completely cleanup by unloading kernel module 
+    ocf_run -q rmmod iscsi_scst || {
+       ocf_log warn "Unable to unload \"iscsi_scst\" module";
+    }
 
     return $OCF_SUCCESS
 }
