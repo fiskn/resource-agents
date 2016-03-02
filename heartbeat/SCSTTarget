@@ -296,14 +296,14 @@ SCSTTarget_start() {
 	return $OCF_SUCCESS
     fi
 
-    local param
-    local name
-    local value
-    local initiator
-    local portal
-    local mod
-    local other_mods
     local ids
+    local initiator
+    local mod
+    local name
+    local other_mods
+    local param
+    local portal
+    local value
 
     # Load core modules
     for mod in scst scst_vdisk scst_disk; do
