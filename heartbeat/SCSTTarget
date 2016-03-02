@@ -254,6 +254,34 @@ add_users() {
     done
 }
 
+# Del discovery users from $1 and of type $2.
+del_discovery_users() {
+    local index
+    local pair
+    local user
+    local passwd
+
+    # Sort the users for creation to allow ordered deletion
+    declare -a array=( $(for user in ${1}; do echo ${user};done | sort -bdf) )
+
+    for pair in "${array[@]}"; do
+        user="${pair%%:::*}"
+        passwd="${pair##*:::}"
+        # Check if this is really the user configured, before deleting it.
+        if grep -Eq "^${user}[[:space:]]{1}${passwd}" ${FABRIC_BASE}/${2}* 2>/dev/null; then
+            index=$(get_index "${pair}" "${array[@]}")
+            [ ${index} -eq 0 ] && index=""
+            scst_sysfs_write "del_attribute ${2}${index} ${user}" ${FABRIC_BASE}/mgmt || {
+                ocf_log err "Unable to delete ${2} \"${user}\".";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted discovery ${2} \"${user}\"."
+        else
+            ocf_log warn "${OCF_RESOURCE_INSTANCE}: The ${2} \"${user}\" for discovery was not created by this instance."
+        fi
+    done
+}
+
 SCSTTarget_usage() {
 	cat <<END
 usage: $0 {start|stop|status|monitor|validate-all|meta-data}
@@ -506,6 +534,13 @@ SCSTTarget_stop() {
                 exit $OCF_ERR_GENERIC
             }
             ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
+        fi
+        # Delete discovery user
+        if [ -e "${FABRIC_BASE}/IncomingUser" ]; then
+            del_discovery_users "${OCF_RESKEY_iscsi_incoming_user_discovery}" "IncomingUser"
+        fi
+        if [ -e "${FABRIC_BASE}/OutgoingUser" ]; then
+            del_discovery_users "${OCF_RESKEY_iscsi_outgoing_user_discovery}" "OutgoingUser"
         fi
     fi
 
