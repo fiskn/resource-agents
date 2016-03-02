@@ -78,7 +78,7 @@ Manages SCST targets. A target is a daemon that speaks
 <shortdesc lang="en">SCST target export agent</shortdesc>
 
 <parameters>
-<parameter name="fabric" required="0" unique="0">
+<parameter name="fabric" required="0" unique="1">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
 "qla2x00t". If unspecified, "iscsi" is used.
