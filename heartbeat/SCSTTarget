@@ -2,13 +2,13 @@
 #
 # SCSTTarget
 #
-# Description: Exports and manages SCST targets.
+# Description:  Exports and manages SCST targets.
 #
-# Author:      Andreas Kurz
+# Author:       Andreas Kurz
 #
-# License:     GNU General Public License (GPL)
+# License:      GNU General Public License (GPL)
 #
-# (c) 2015     Andreas Kurz <andreas.kurz AT gmail DOT com>
+# (c) 2015-2016 Andreas Kurz <andreas.kurz AT gmail DOT com>
 #
 # This resource agent is derived from the iSCSITarget resource
 # agent, which itself is made available to the public under the
@@ -68,8 +68,8 @@ meta_data() {
 	cat <<END
 <?xml version="1.0"?>
 <!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
-<resource-agent name="SCSTTarget" version="0.3.0">
-<version>0.3.0</version>
+<resource-agent name="SCSTTarget" version="0.4.0">
+<version>0.4.0</version>
 
 <longdesc lang="en">
 Manages SCST targets. A target is a daemon that speaks
@@ -78,7 +78,7 @@ Manages SCST targets. A target is a daemon that speaks
 <shortdesc lang="en">SCST target export agent</shortdesc>
 
 <parameters>
-<parameter name="fabric" required="0" unique="0">
+<parameter name="fabric" required="0" unique="1">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
 "qla2x00t". If unspecified, "iscsi" is used.
@@ -121,6 +121,48 @@ dependent. Neither the name nor the value may contain whitespace.
 <content type="string" />
 </parameter>
 
+<parameter name="iscsi_incoming_user" required="0" unique="0">
+<longdesc lang="en">
+A space-separated list of "username:::password" pairs to restrict
+incoming target access. This will be ignored for all but iSCSI targets.
+Passwords must be at least 12 bytes long. Usernames and passwords must
+not contain spaces.
+</longdesc>
+<shortdesc lang="en">Incoming iSCSI username:::password pairs</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_outgoing_user" required="0" unique="0">
+<longdesc lang="en">
+An outgoing "username:::password" pair for mutual authentication. This will be
+ignored for all but iSCSI targets. The Password must be at least 12 bytes long.
+Username and password must not contain spaces.
+</longdesc>
+<shortdesc lang="en">Outgoing iSCSI username:::password pair</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_incoming_user_discovery" required="0" unique="0">
+<longdesc lang="en">
+A space-separated list of "username:::password" pairs to restrict
+incoming target discovery requests. This will be ignored for all but
+iSCSI targets. Passwords must be at least 12 bytes long. Usernames and
+passwords must not contain spaces.
+contain space.
+</longdesc>
+<shortdesc lang="en">Incoming iSCSI discovery username:::password pairs</shortdesc>
+<content type="string" />
+</parameter>
+
+<parameter name="iscsi_outgoing_user_discovery" required="0" unique="0">
+<longdesc lang="en">
+An outgoing "username:::password" pair for mutual authentication of target
+discovery requests. This will be ignored for all but iSCSI targets. The Password
+must be at least 12 bytes long. Username and password must not contain spaces.
+</longdesc>
+<shortdesc lang="en">Outgoing iSCSI discovery username:::password pair</shortdesc>
+<content type="string" />
+</parameter>
 </parameters>
 
 <actions>
@@ -128,6 +170,7 @@ dependent. Neither the name nor the value may contain whitespace.
 <action name="stop"         timeout="10" />
 <action name="status"       timeout="10" interval="10" depth="0" />
 <action name="monitor"      timeout="10" interval="10" depth="0" />
+<action name="reload"       timeout="30" />
 <action name="meta-data"    timeout="5" />
 <action name="validate-all"   timeout="10" />
 </actions>
@@ -167,6 +210,79 @@ scst_sysfs_write() {
     scst_sysfs_read /sys/kernel/scst_tgt/last_sysfs_mgmt_res >/dev/null
 }
 
+get_index() {
+    local index
+    declare -a array=( $(echo -n ${2}) )
+
+    for (( index = 0; index < ${#array[@]}; index++ )); do
+        if [ "${array[$index]}" == "$1" ]; then
+            echo $index
+            break
+        fi
+    done
+}
+
+# Add users from $1 and of type $2 to authenticate discovery.
+# If $3 is specified it must be an existing target_id.
+add_users() {
+    local index
+    local pair
+    local user
+    local passwd
+    local attribute="add_attribute"
+    # Sort the users for creation to allow ordered deletion
+    declare -a array=( $(for user in ${1}; do echo ${user};done | sort -bdf) )
+
+    # If a third parameter is defined it has to be
+    # a specific target
+    [ -n "${3}" ] && attribute="add_target_attribute ${3}"
+
+    for pair in "${array[@]}"; do
+        user="${pair%%:::*}"
+        passwd="${pair##*:::}"
+        # If the username already exists skip creation
+        if grep -Eq "^${user}[[:space:]]{1}" ${FABRIC_BASE}/${3}/${2}* 2>/dev/null; then
+            ocf_log warn "${OCF_RESOURCE_INSTANCE}: The ${2} \"${user}\" already exists - skipping."
+        else
+            index=$(get_index "${pair}" "${array[@]}")
+            [ ${index} -eq 0 ] && index=""
+            scst_sysfs_write "${attribute} ${2}${index} ${user} ${passwd}" ${FABRIC_BASE}/mgmt || {
+                ocf_log err "Unable to add ${2} \"${user}\".";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Created ${2} \"${user}\"."
+        fi
+    done
+}
+
+# Del discovery users from $1 and of type $2.
+del_discovery_users() {
+    local index
+    local pair
+    local user
+    local passwd
+
+    # Sort the users for creation to allow ordered deletion
+    declare -a array=( $(for user in ${1}; do echo ${user};done | sort -bdf) )
+
+    for pair in "${array[@]}"; do
+        user="${pair%%:::*}"
+        passwd="${pair##*:::}"
+        # Check if this is really the user configured, before deleting it.
+        if grep -Eq "^${user}[[:space:]]{1}${passwd}" ${FABRIC_BASE}/${2}* 2>/dev/null; then
+            index=$(get_index "${pair}" "${array[@]}")
+            [ ${index} -eq 0 ] && index=""
+            scst_sysfs_write "del_attribute ${2}${index} ${user}" ${FABRIC_BASE}/mgmt || {
+                ocf_log err "Unable to delete ${2} \"${user}\".";
+                exit $OCF_ERR_GENERIC
+            }
+            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted discovery ${2} \"${user}\"."
+        else
+            ocf_log warn "${OCF_RESOURCE_INSTANCE}: The ${2} \"${user}\" for discovery was not created by this instance."
+        fi
+    done
+}
+
 SCSTTarget_usage() {
 	cat <<END
 usage: $0 {start|stop|status|monitor|validate-all|meta-data}
@@ -181,14 +297,14 @@ SCSTTarget_start() {
 	return $OCF_SUCCESS
     fi
 
-    local param
-    local name
-    local value
-    local initiator
-    local portal
-    local mod
-    local other_mods
     local ids
+    local initiator
+    local mod
+    local name
+    local other_mods
+    local param
+    local portal
+    local value
 
     # Load core modules
     for mod in scst scst_vdisk scst_disk; do
@@ -232,6 +348,14 @@ SCSTTarget_start() {
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: iscsi_scst module loaded."
             fi
 
+            # Configure incoming/outgoing users for discovery
+            if [ -n "${OCF_RESKEY_iscsi_incoming_user_discovery}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_incoming_user_discovery}" IncomingUser
+            fi
+            if [ -n "${OCF_RESKEY_iscsi_outgoing_user_discovery}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_outgoing_user_discovery}" OutgoingUser
+            fi
+
             # Create the target
             if [ ! -d "${FABRIC_BASE}/${OCF_RESKEY_id}" ]; then
                 scst_sysfs_write "add_target ${OCF_RESKEY_id}" ${FABRIC_BASE}/mgmt || {
@@ -239,6 +363,14 @@ SCSTTarget_start() {
                     exit $OCF_ERR_GENERIC
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: iSCSI target ${OCF_RESKEY_id} initialized"
+            fi
+
+            # Configure incoming/outgoing users
+            if [ -n "${OCF_RESKEY_iscsi_incoming_user}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_incoming_user}" IncomingUser "${OCF_RESKEY_id}"
+            fi
+            if [ -n "${OCF_RESKEY_iscsi_outgoing_user}" ]; then
+                 add_users "${OCF_RESKEY_iscsi_outgoing_user}" OutgoingUser "${OCF_RESKEY_id}"
             fi
 
             # Define allowed portals
@@ -404,10 +536,27 @@ SCSTTarget_stop() {
             }
             ocf_log debug "${OCF_RESOURCE_INSTANCE}: disabled ${OCF_RESKEY_fabric} fabric after last target was disabled."
         fi
+        # Delete discovery user
+        if [ -e "${FABRIC_BASE}/IncomingUser" ]; then
+            del_discovery_users "${OCF_RESKEY_iscsi_incoming_user_discovery}" "IncomingUser"
+        fi
+        if [ -e "${FABRIC_BASE}/OutgoingUser" ]; then
+            del_discovery_users "${OCF_RESKEY_iscsi_outgoing_user_discovery}" "OutgoingUser"
+        fi
     fi
 
     # Cleanup information for ALUA on target stop
     ${CRM_ATTR_TGT} --delete
+
+    return $OCF_SUCCESS
+}
+
+SCSTTarget_reload() {
+    case $OCF_RESKEY_fabric in
+        iscsi|qla2x00t)
+            SCSTTarget_start
+            ;;
+    esac
 
     return $OCF_SUCCESS
 }
@@ -517,8 +666,11 @@ SCSTTarget_validate() {
     local var
     local envar
     case $OCF_RESKEY_fabric in
-	iscsi|qla2x00t)
-	    unsupported_params="tid incoming_username incoming_password"
+	qla2x00t)
+	    unsupported_params="iscsi_incoming_user \
+                                iscsi_outgoing_user \
+                                iscsi_incoming_user_discovery \
+                                iscsi_outgoing_user_discovery"
 	    ;;
     esac
     for var in ${unsupported_params}; do
@@ -566,6 +718,7 @@ SCSTTarget_validate
 case $__OCF_ACTION in
 start)		SCSTTarget_start;;
 stop)		SCSTTarget_stop;;
+reload)		SCSTTarget_reload;;
 monitor|status)	SCSTTarget_monitor;;
 validate-all)	;;
 *)		SCSTTarget_usage
