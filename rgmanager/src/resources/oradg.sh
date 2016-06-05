@@ -35,7 +35,7 @@
 # All other trademarks are property of their respective owners.
 #
 #
-# $Id: orainstance.sh 127 2009-08-21 09:17:52Z hevirtan $
+# $Id: oradg.sh 127 2009-08-21 09:17:52Z hevirtan $
 #
 # Original version is distributed with RHCS. The modifications include
 # the following minor changes:
@@ -65,13 +65,15 @@ ORACLE_SID=$OCF_RESKEY_name
 # Optional parameters with default values
 LISTENERS=$OCF_RESKEY_listeners
 LOCKFILE="$ORACLE_HOME/.orainstance-${ORACLE_SID}.lock"
+[ -n "$OCF_RESKEY_vhost" ] && ORACLE_HOSTNAME=$OCF_RESKEY_vhost
 [ -n "$OCF_RESKEY_lockfile" ] && LOCKFILE=$OCF_RESKEY_lockfile
 
-export LISTENERS ORACLE_USER ORACLE_HOME ORACLE_SID LOCKFILE
+export LISTENERS ORACLE_USER ORACLE_HOME ORACLE_SID LOCKFILE ORACLE_HOSTNAME
 export LD_LIBRARY_PATH=$ORACLE_HOME/lib
 export PATH=$ORACLE_HOME/bin:/bin:/sbin:/usr/bin:/usr/sbin
 
-declare -i	RESTART_RETRIES=3
+#declare -i	RESTART_RETRIES=3
+declare -i	RESTART_RETRIES=0
 declare -r	DB_PROCNAMES="pmon"
 declare -r	LSNR_PROCNAME="tnslsnr"
 
@@ -98,9 +100,37 @@ start_db() {
 	# Set up our sqlplus script.  Basically, we're trying to 
 	# capture output in the hopes that it's useful in the case
 	# that something doesn't work properly.
-	startup_cmd="set heading off;\nstartup;\nquit;\n"
-	startup_stdout=$(echo -e "$startup_cmd" | sqlplus -S "/ as sysdba")
+
+	startup_stdout=$(sqlplus "/ as sysdba" << EOF
+set serveroutput on
+startup mount;
+
+declare
+  rol varchar(20);
+begin
+  select database_role into rol from v\$database;
+  
+  dbms_output.put_line('Database role is ' || rol);
+  if (rol = 'PHYSICAL STANDBY') then
+    return;
+  end if;
+
+  execute immediate 'alter database open';
+end;
+/
+
+select database_role, open_mode from v\$database;
+set heading off;
+set serveroutput off;
+spool /tmp/dgstatus.${ORACLE_SID};
+select open_mode from v\$database;
+spool off;
+EOF
+)
 	rv=$?
+
+        # Data Guard Modification 2 - Remove deprecated parameter error from startup_stdout
+        startup_stdout=$(echo $startup_stdout | sed 's/ORA-32004//g')
 
 	# Dump output to syslog for debugging
 	ocf_log debug "[$ORACLE_SID] [$rv] sent $startup_cmd"
@@ -116,15 +146,6 @@ start_db() {
 	# Troubleshooting:
 	#   ORA-00845 - Try rm -f /dev/shm/ora_*
 	#   ORA-01081 - Try echo -e 'shutdown abort;\nquit;'|sqlplus "/ as sysdba"
-	# We need to ignore some non-fatl errors
-
-	ignore_error=(ORA-32004)
-
-	for error in ${ignore_error[*]}
-	do
-		startup_stdout=$(echo "$startup_stdout" | sed "s/${error}//g")
-	done
-
 	if [[ "$startup_stdout" =~ "ORA-" ]] || [[ "$startup_stdout" =~ "failure" ]]; then
 		ocf_log error "Starting Oracle DB $ORACLE_SID failed, found errors in stdout"
 		return 1
@@ -442,6 +463,24 @@ start_oracle() {
 		fi
 	done
 
+	if [ -n "$ORACLE_HOSTNAME" -a -s /tmp/dgstatus.${ORACLE_SID} ]; then
+        	# Start DB Console if vhost defined and database_role is READ WRITE
+		if cat /tmp/dgstatus.${ORACLE_SID} 2>/dev/null | grep "READ WRITE"; then
+			ocf_log info "Starting Oracle EM DB Console for $ORACLE_SID"
+			emctl start dbconsole
+			if [ $? -ne 0 ]; then
+				ocf_log error "Oracle EM DB Console startup for $ORACLE_SID failed"
+				ocf_log error "Starting service $ORACLE_SID failed"
+				# Force good return status 
+				#return 1
+				return 0
+			else
+				ocf_log info "Oracle EM DB Console startup for $ORACLE_SID succeeded"
+			fi
+		fi
+                rm -f /tmp/dgstatus.${ORACLE_SID}
+	fi
+
 	if [ -n "$LOCKFILE" ]; then
 		touch "$LOCKFILE"
 	fi
@@ -486,6 +525,21 @@ stop_oracle() {
 			fi
 		fi
 	done
+
+	if [ -n "$ORACLE_HOSTNAME" ]; then
+		# Stop DB Console if vhost defined
+		ocf_log info "Stopping Oracle EM DB Console for $ORACLE_SID"
+		emctl stop dbconsole
+		if [ $? -ne 0 ]; then
+			ocf_log error "Stopping Oracle EM DB Console for $ORACLE_SID failed"
+			ocf_log error "Stopping service $ORACLE_SID failed"
+			# Force good return status 
+			#return 1
+			return 0
+		else
+			ocf_log info "Stopping Oracle EM DB Console for $ORACLE_SID succeeded"
+		fi
+	fi
 
 	exit_idle
 
@@ -545,6 +599,8 @@ status_oracle() {
 		last=$?
 	done
 	
+	# No status for DB Console (ORACLE_HOSTNAME)
+
 	# No lock file, but everything's running.  Put the lock
 	# file back. XXX - this kosher?
 	if [ $last -eq 0 ] && [ $subsys_lock -ne 0 ]; then
@@ -559,6 +615,16 @@ status_oracle() {
 ########################
 # Do some real work... #
 ########################
+
+# Data Guard Modification 1 - Debug Logging
+case $1 in
+stop | start | status | restart | recover | monitor )
+[ $(id -u) = 0 ] && exec > "/tmp/oradg_${ORACLE_SID}_$1.log" 2>&1
+set -x
+date
+echo $@
+printenv
+esac
 
 case $1 in
 	meta-data)

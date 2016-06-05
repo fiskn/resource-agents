@@ -76,6 +76,7 @@ ocf_SCRIPTS	     =  ClusterMon		\
 			Filesystem		\
 			fio			\
 			galera			\
+			garbd			\
 			ids			\
 			iscsi			\
 			ICP			\
@@ -94,6 +95,7 @@ ocf_SCRIPTS	     =  ClusterMon		\
 			ManageVE		\
 			mysql			\
 			mysql-proxy		\
+			nagios			\
 			named			\
 			nfsnotify		\
 			nfsserver		\
@@ -144,12 +146,14 @@ ocfcommon_DATA		= ocf-shellfuncs 	\
 			  ocf-directories 	\
 			  ocf-returncodes 	\
  			  ocf-rarun		\
+ 			  ocf-distro		\
 			  apache-conf.sh 	\
 			  http-mon.sh    	\
 			  sapdb-nosha.sh	\
 			  sapdb.sh		\
 			  ora-common.sh		\
 			  mysql-common.sh		\
+			  nfsserver-redhat.sh		\
 			  findif.sh
 
 # Legacy locations
