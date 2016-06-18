@@ -1018,7 +1018,7 @@ SCSTLogicalUnit_notify() {
             # Switch all new slave instances TPG to standby
             for node in $startit; do
                 # Do we have any master(s) at all and did the start happened locally?
-                if [ "$node" = "$HOSTNAME" ]; then
+                if [ "$node" == "$HOSTNAME" ]; then
                     # We are slave: be sure the master(s) TPG is also
                     # set to active (without luns) on this node.
                     # We rely on default standby state on creation.
