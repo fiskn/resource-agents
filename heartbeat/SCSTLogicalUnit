@@ -768,27 +768,29 @@ SCSTLogicalUnit_start() {
                 # apply "rel_tgt_id"s in a consistent way.
                 declare -a local_targets=( $(for target in $(${CRM_ATTR_GET_TGT} ${tpg}); do echo ${target};done | sort -bdf) )
                 for target in "${local_targets[@]}"; do
-                    # We need a unique rel_tgt_id for every port in the TPG,
-                    # also for multiple ports per node.
-                    rel_tgt_id=$(( ($(get_index ${tpg} "${tpgs[*]}") * 1000 ) + \
-                                   ($(get_index ${target} "${local_targets[*]}") + ${tpg_base} ) ))
-                    if [ -d "${dev_group}/target_groups/${tpg}" ]; then
-                        if [ ! -e "${dev_group}/target_groups/${tpg}/${target}" ]; then
-                            scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
-                                ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
-                                exit $OCF_ERR_GENERIC
-                            }
-                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added target ${target} to TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
-                        fi
+					if [ ${HOSTNAME} == ${tpg} ]; then
+	                    # We need a unique rel_tgt_id for every port in the TPG,
+    	                # also for multiple ports per node.
+        	            rel_tgt_id=$(( ($(get_index ${tpg} "${tpgs[*]}") * 1000 ) + \
+            	                       ($(get_index ${target} "${local_targets[*]}") + ${tpg_base} ) ))
+                	    if [ -d "${dev_group}/target_groups/${tpg}" ]; then
+                    	    if [ ! -e "${dev_group}/target_groups/${tpg}/${target}" ]; then
+                        	    scst_sysfs_write "add ${target}" ${dev_group}/target_groups/${tpg}/mgmt || {
+                            	    ocf_log err "Unable to add target ${target} to TPG ${tpg} for device_group ${OCF_RESOURCE_INSTANCE}.";
+                            	   	exit $OCF_ERR_GENERIC
+                            	}
+                            	ocf_log debug "${OCF_RESOURCE_INSTANCE}: Added target ${target} to TPG ${tpg} - device_group ${OCF_RESOURCE_INSTANCE}."
+                        	fi
 
-                        if [ -d "${dev_group}/target_groups/${tpg}/${target}" ]; then
-                            scst_sysfs_write "${rel_tgt_id}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
-                                ocf_log err "Unable to set relative target id ${rel_tgt_id} for target ${target} - device_group ${OCF_RESOURCE_INSTANCE}.";
-                                exit $OCF_ERR_GENERIC
-                            }
-                            ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${rel_tgt_id} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
-                        fi
-                   fi
+                        	if [ -d "${dev_group}/target_groups/${tpg}/${target}" ]; then
+                            	scst_sysfs_write "${rel_tgt_id}" ${dev_group}/target_groups/${tpg}/${target}/rel_tgt_id || {
+                                	ocf_log err "Unable to set relative target id ${rel_tgt_id} for target ${target} - device_group ${OCF_RESOURCE_INSTANCE}.";
+                                	exit $OCF_ERR_GENERIC
+                            	}
+                            	ocf_log debug "${OCF_RESOURCE_INSTANCE}: Set rel_tgt_id ${rel_tgt_id} for target ${target} - TPG ${tpg}, device_group ${OCF_RESOURCE_INSTANCE}."
+                        	fi
+                   		fi
+					fi
                 done
             fi
         done
