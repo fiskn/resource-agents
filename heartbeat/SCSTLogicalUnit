@@ -580,19 +580,28 @@ SCSTLogicalUnit_acls() {
         # remove empty (or only exporting lun 0) ini_groups
         for initiator in $(find ${FABRIC_BASE}/${target}/ini_groups/ -mindepth 1 -maxdepth 1 -type d) ; do
             if [ $(find ${initiator}/luns -mindepth 1 -maxdepth 1 -type d ! -name '0' | wc -l) -eq 0 ] ; then
-                # Forcefully close all sessions.
-                # When using iSCSI MPIO, several sessions per initiator can be available.
-                for session in $(ls -1d ${FABRIC_BASE}/${target}/sessions/${initiator##*/} \
-                                        ${FABRIC_BASE}/${target}/sessions/${initiator##*/}_* 2>/dev/null) ; do
-                    scst_sysfs_write "1" "${session}/force_close" && \
-                    ocf_log warn "Forcefully closed session from initiator ${initiator##*/}."
-                done
+		#Redirect any new connections and loop until all connections have been closed
+		scst_sysfs_write "255.255.255.255:32600 temp" "${FABRIC_BASE}/${target}/redirect"
+                while [ -d ${FABRIC_BASE}/${target}/sessions/${initiator##*/} ];
+                do
+        	        # Forcefully close all sessions.
+	                # When using iSCSI MPIO, several sessions per initiator can be available.
+	                for session in $(ls -1d ${FABRIC_BASE}/${target}/sessions/${initiator##*/} \
+        	                                ${FABRIC_BASE}/${target}/sessions/${initiator##*/}_* 2>/dev/null) ; do
+                	    scst_sysfs_write "1" "${session}/force_close" && \
+                    	ocf_log warn "Forcefully closed session from initiator ${initiator##*/}."
+                	done
+		done
                 # Delete the ini_group
                 scst_sysfs_write "del ${initiator##*/}" ${FABRIC_BASE}/${target}/ini_groups/mgmt || {
                      ocf_log err "Unable to delete initiator group ${initiator##*/} from target ${target}.";
+		     #remove redirect
+		     scst_sysfs_write " " "${FABRIC_BASE}/${target}/redirect"
                      exit $OCF_ERR_GENERIC
                 }
                 ocf_log debug "${OCF_RESOURCE_INSTANCE}: Deleted empty initiator group ${initiator##*/} from target ${target}."
+		#Remove redirect
+		scst_sysfs_write " " "${FABRIC_BASE}/${target}/redirect"
            fi
         done
     done
