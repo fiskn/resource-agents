@@ -113,7 +113,7 @@ a Target, exported via a daemon that speaks a specific protocol.
 <shortdesc lang="en">Manages Logical Units (LUs) for SCST targets</shortdesc>
 
 <parameters>
-<parameter name="fabric" required="0" unique="1">
+<parameter name="fabric" required="0" unique="0">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
 "qla2x00t". If unspecified, "iscsi" is used.
@@ -122,7 +122,7 @@ The SCST target supports several fabric types. Must be one of "iscsi" or
 <content type="string" default="${OCF_RESKEY_fabric_default}"/>
 </parameter>
 
-<parameter name="target_id" required="1" unique="1">
+<parameter name="target_id" required="1" unique="0">
 <longdesc lang="en">
 A white-space separated list of targets this Logical Unit belongs to.
 For iSCSI targets this has to be the target iSCSI Qualified Name (IQN).
@@ -133,7 +133,7 @@ identification.
 <content type="string" />
 </parameter>
 
-<parameter name="lun" required="1" unique="1">
+<parameter name="lun" required="1" unique="0">
 <longdesc lang="en">
 The Logical Unit number (LUN) exposed to initiators.
 </longdesc>
@@ -141,7 +141,7 @@ The Logical Unit number (LUN) exposed to initiators.
 <content type="integer" />
 </parameter>
 
-<parameter name="path" required="1" unique="1">
+<parameter name="path" required="1" unique="0">
 <longdesc lang="en">
 The path to the block device or file to be exposed.
 </longdesc>
@@ -149,7 +149,7 @@ The path to the block device or file to be exposed.
 <content type="string" />
 </parameter>
 
-<parameter name="device_handler" required="0" unique="1">
+<parameter name="device_handler" required="0" unique="0">
 <longdesc lang="en">
 The SCST devive handler to be used for this Logical Unit.
 The supported handlers for this RA are:
@@ -159,7 +159,7 @@ vdisk_fileio, vdisk_blockio, vcdrom, vdisk_nullio
 <content type="string" default="${OCF_RESKEY_device_handler_default}"/>
 </parameter>
 
-<parameter name="scsi_id" required="0" unique="1">
+<parameter name="scsi_id" required="0" unique="0">
 <longdesc lang="en">
 The SCSI ID to be configured for this Logical Unit. The default
 is a hash of the resource name, truncated to 24 bytes.
@@ -168,7 +168,7 @@ is a hash of the resource name, truncated to 24 bytes.
 <content type="string" default="${OCF_RESKEY_scsi_id_default}"/>
 </parameter>
 
-<parameter name="scsi_sn" required="0" unique="1">
+<parameter name="scsi_sn" required="0" unique="0">
 <longdesc lang="en">
 The SCSI serial number to be configured for this Logical Unit.
 The default is a hash of the resource name, truncated
@@ -178,7 +178,7 @@ to 8 bytes.
 <content type="string" default="${OCF_RESKEY_scsi_sn_default}"/>
 </parameter>
 
-<parameter name="product_id" required="0" unique="1">
+<parameter name="product_id" required="0" unique="0">
 <longdesc lang="en">
 The SCSI product ID to be configured for this Logical Unit,
 truncated to 16 bytes.
@@ -187,7 +187,7 @@ truncated to 16 bytes.
 <content type="string" />
 </parameter>
 
-<parameter name="vendor_id" required="0" unique="1">
+<parameter name="vendor_id" required="0" unique="0">
 <longdesc lang="en">
 The SCSI vendor ID to be configured for this Logical Unit,
 truncated to 8 bytes.
@@ -196,7 +196,7 @@ truncated to 8 bytes.
 <content type="string" default="${OCF_RESKEY_vendor_id_default}"/>
 </parameter>
 
-<parameter name="vendor_specific_id" required="0" unique="1">
+<parameter name="vendor_specific_id" required="0" unique="0">
 <longdesc lang="en">
 The SCSI vendor specific ID to be configured for this Logical Unit.
 It defaults to the same value as the SCSI serial id, and is
@@ -206,7 +206,7 @@ truncated to 24 bytes.
 <content type="string" default="${OCF_RESKEY_scsi_id_default}"/>
 </parameter>
 
-<parameter name="additional_parameters" required="0" unique="1">
+<parameter name="additional_parameters" required="0" unique="0">
 <longdesc lang="en">
 Additional LU parameters. A space-separated list of "name=value" pairs
 which will be passed through to the targets management
@@ -241,7 +241,7 @@ implicitly using target-side configFS operations.
 <content type="string"/>
 </parameter>
 
-<parameter name="synchro_cs_vd_name" required="0" unique="1">
+<parameter name="synchro_cs_vd_name" required="0" unique="0">
 <longdesc lang="en">
 Name of a shared virtual drive, exported by a LSI/Avago Synchro CS
 controller. This name must be the one set for the block device

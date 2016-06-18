@@ -78,7 +78,7 @@ Manages SCST targets. A target is a daemon that speaks
 <shortdesc lang="en">SCST target export agent</shortdesc>
 
 <parameters>
-<parameter name="fabric" required="0" unique="1">
+<parameter name="fabric" required="0" unique="0">
 <longdesc lang="en">
 The SCST target supports several fabric types. Must be one of "iscsi" or
 "qla2x00t". If unspecified, "iscsi" is used.
@@ -87,7 +87,7 @@ The SCST target supports several fabric types. Must be one of "iscsi" or
 <content type="string" default="${OCF_RESKEY_fabric_default}"/>
 </parameter>
 
-<parameter name="id" required="1" unique="1">
+<parameter name="id" required="1" unique="0">
 <longdesc lang="en">
 ISCSI targets use an iSCSI Qualified Name (IQN). Should follow the conventional
 "iqn.yyyy-mm.&lt;reversed domain name&gt;[:identifier]" syntax.
